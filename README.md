@@ -21,16 +21,6 @@ npm run dev
 
 Open `http://localhost:5173`.
 
-## Environment Variables
-
-Create a `.env` or `.env.local` file in the project root as needed:
-
-- `MONGODB_URI` (optional): Mongo connection string for the Vite dev API
-  middleware in `server/`. Without it, API calls will fail and the app will
-  continue using local storage.
-- `VITE_API_BASE_URL` (optional): Base URL for a separate API server. If empty,
-  the app uses the Vite dev middleware.
-- `VITE_GOOGLE_CLIENT_ID` (optional): Google OAuth client ID to enable sign-in.
 
 ## Google Sign-In (dev)
 
@@ -56,3 +46,8 @@ Note: Google sign-in requires HTTPS for non-localhost origins.
 - `src/` - React UI and game logic
 - `server/` - Vite middleware API (MongoDB + user/task tracking)
 - `assets/` + `public/assets/` - sprite sheets and art assets
+
+## Credits
+Luiz Melo on itch.io for providing free rpg elements
+Adobe Creative Cloud for providing backdrops
+Medieval Lofi for providing lofi music
