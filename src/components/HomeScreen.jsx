@@ -3,18 +3,25 @@ import { SCREENS, MODE, AVATARS, PRIORITY, getRandomDungeonRoom, getMonsterForPr
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import AddTaskModal from './AddTaskModal';
 import PomodoroModal from './PomodoroModal';
+import homeScreenAudio from '../../audio/homescreen.mp3';
+import homeScreenRedAudio from '../../audio/homescreen_red.mp3';
 
 const W = 320;
 const H = 180;
 
 function HomeScreen({ gameState, onNavigate }) {
   const canvasRef = useRef(null);
+  const audioRef = useRef(null);
+  const audioSourceRef = useRef(homeScreenAudio);
+  const fadeTimerRef = useRef(null);
   const [mode, setMode] = useState(MODE.TASKS);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isPomodoroModalOpen, setIsPomodoroModalOpen] = useState(false);
   const [avatarSprite, setAvatarSprite] = useState(null);
   const [googleUser, setGoogleUser] = useLocalStorage('pomoDungeon_googleUser', null);
   const [streakDays] = useLocalStorage('pomoDungeon_streakDays', 0);
+  const [musicEnabled, setMusicEnabled] = useLocalStorage('pomoDungeon_musicEnabled', true);
+  const [musicVolume, setMusicVolume] = useLocalStorage('pomoDungeon_musicVolume', 0.35);
   const [authError, setAuthError] = useState('');
   const [showTutorial, setShowTutorial] = useState(
     () => !googleUser || localStorage.getItem('pomoDungeon_homeTutorialSeen') !== 'true'
@@ -24,7 +31,11 @@ function HomeScreen({ gameState, onNavigate }) {
   const googleInitRef = useRef(false);
   const tokenClientRef = useRef(null);
   const [isAuthMenuOpen, setIsAuthMenuOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const authMenuRef = useRef(null);
+  const settingsRef = useRef(null);
+  const musicEnabledRef = useRef(musicEnabled);
+  const musicVolumeRef = useRef(musicVolume);
   const dismissTutorial = () => {
     if (googleUser) {
       localStorage.setItem('pomoDungeon_homeTutorialSeen', 'true');
@@ -45,6 +56,107 @@ function HomeScreen({ gameState, onNavigate }) {
       setTutorialStep(0);
     }
   }, [showTutorial]);
+
+  useEffect(() => {
+    const initialSource = mode === MODE.STOPWATCH ? homeScreenRedAudio : homeScreenAudio;
+    const audio = new Audio(initialSource);
+    audio.loop = true;
+    audio.volume = Math.max(0, Math.min(1, musicVolumeRef.current));
+    audio.preload = 'auto';
+    audioSourceRef.current = initialSource;
+    audio.src = initialSource;
+    audioRef.current = audio;
+
+    const attemptPlay = () => {
+      if (!audioRef.current || !musicEnabledRef.current) return;
+      audioRef.current.play().catch(() => {});
+    };
+
+    if (musicEnabledRef.current) attemptPlay();
+    window.addEventListener('pointerdown', attemptPlay, { once: true });
+    window.addEventListener('keydown', attemptPlay, { once: true });
+
+    return () => {
+      window.removeEventListener('pointerdown', attemptPlay);
+      window.removeEventListener('keydown', attemptPlay);
+      if (fadeTimerRef.current) {
+        clearInterval(fadeTimerRef.current);
+        fadeTimerRef.current = null;
+      }
+      audio.pause();
+      audio.currentTime = 0;
+      audioRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const nextSource = mode === MODE.STOPWATCH ? homeScreenRedAudio : homeScreenAudio;
+    if (audioSourceRef.current !== nextSource) {
+      audioSourceRef.current = nextSource;
+      const targetVolume = Math.max(0, Math.min(1, musicVolumeRef.current));
+      if (fadeTimerRef.current) {
+        clearInterval(fadeTimerRef.current);
+        fadeTimerRef.current = null;
+      }
+
+      const fadeDuration = 500;
+      const stepMs = 50;
+      const steps = Math.max(1, Math.round(fadeDuration / stepMs));
+      const startVolume = audio.volume;
+      let step = 0;
+
+      fadeTimerRef.current = setInterval(() => {
+        step += 1;
+        const progress = step / steps;
+        audio.volume = startVolume * (1 - progress);
+
+        if (progress >= 1) {
+          clearInterval(fadeTimerRef.current);
+          fadeTimerRef.current = null;
+          audio.pause();
+          audio.currentTime = 0;
+          audio.src = nextSource;
+          audio.load();
+          if (musicEnabledRef.current) {
+            audio.play().catch(() => {});
+          }
+
+          let fadeInStep = 0;
+          fadeTimerRef.current = setInterval(() => {
+            fadeInStep += 1;
+            const inProgress = fadeInStep / steps;
+            audio.volume = targetVolume * inProgress;
+            if (inProgress >= 1) {
+              clearInterval(fadeTimerRef.current);
+              fadeTimerRef.current = null;
+              audio.volume = targetVolume;
+            }
+          }, stepMs);
+        }
+      }, stepMs);
+    }
+  }, [mode]);
+
+  useEffect(() => {
+    musicEnabledRef.current = musicEnabled;
+  }, [musicEnabled]);
+
+  useEffect(() => {
+    musicVolumeRef.current = musicVolume;
+  }, [musicVolume]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.volume = Math.max(0, Math.min(1, musicVolume));
+    if (musicEnabled) {
+      audio.play().catch(() => {});
+    } else {
+      audio.pause();
+    }
+  }, [musicEnabled, musicVolume]);
   const getGoogleAuthHint = () => {
     const { protocol, hostname } = window.location;
     const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
@@ -231,6 +343,28 @@ function HomeScreen({ gameState, onNavigate }) {
       document.removeEventListener('keydown', handleEscape);
     };
   }, [isAuthMenuOpen]);
+
+  useEffect(() => {
+    if (!isSettingsOpen) return;
+
+    const handleOutsideClick = (event) => {
+      if (!settingsRef.current) return;
+      if (!settingsRef.current.contains(event.target)) {
+        setIsSettingsOpen(false);
+      }
+    };
+
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') setIsSettingsOpen(false);
+    };
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isSettingsOpen]);
 
   // Initialize rain
   useEffect(() => {
@@ -803,7 +937,10 @@ function HomeScreen({ gameState, onNavigate }) {
                 <div className="auth-menu">
                   <button
                     className="auth-avatar-btn"
-                    onClick={() => setIsAuthMenuOpen((prev) => !prev)}
+                    onClick={() => {
+                      setIsAuthMenuOpen((prev) => !prev);
+                      setIsSettingsOpen(false);
+                    }}
                     aria-label="Open user menu"
                     type="button"
                   >
@@ -819,7 +956,10 @@ function HomeScreen({ gameState, onNavigate }) {
                       <button
                         className="auth-dropdown-item"
                         type="button"
-                        onClick={() => setIsAuthMenuOpen(false)}
+                        onClick={() => {
+                          setIsAuthMenuOpen(false);
+                          setIsSettingsOpen(true);
+                        }}
                       >
                         Settings
                       </button>
@@ -850,6 +990,55 @@ function HomeScreen({ gameState, onNavigate }) {
                       >
                         Sign out
                       </button>
+                    </div>
+                  )}
+                  {isSettingsOpen && (
+                    <div className="settings-panel" ref={settingsRef} role="dialog" aria-label="Settings">
+                      <div className="settings-header">
+                        <span>Settings</span>
+                        <button
+                          className="settings-close"
+                          type="button"
+                          aria-label="Close settings"
+                          onClick={() => setIsSettingsOpen(false)}
+                        >
+                          ×
+                        </button>
+                      </div>
+                      <div className="settings-row">
+                        <label className="settings-toggle">
+                          <span>Music</span>
+                          <span className="settings-toggle-controls">
+                            <input
+                              type="checkbox"
+                              checked={musicEnabled}
+                              onChange={(event) => setMusicEnabled(event.target.checked)}
+                              aria-label="Toggle music"
+                            />
+                            <span className="settings-toggle-text">
+                              {musicEnabled ? 'On' : 'Off'}
+                            </span>
+                          </span>
+                        </label>
+                      </div>
+                      <div className="settings-row">
+                        <label className="settings-label" htmlFor="music-volume">
+                          Music volume
+                        </label>
+                        <div className="settings-slider-row">
+                          <input
+                            id="music-volume"
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={Math.round(musicVolume * 100)}
+                            onChange={(event) => setMusicVolume(Number(event.target.value) / 100)}
+                          />
+                          <span className="settings-value">
+                            {Math.round(musicVolume * 100)}%
+                          </span>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
