@@ -5,7 +5,11 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
   // Initialize elapsed from task's saved timeSpent (for resume functionality)
   const [elapsed, setElapsed] = useState(task?.timeSpent || 0);
   const [paused, setPaused] = useState(false);
-  const [completed, setCompleted] = useState(false);
+  const [questComplete, setQuestComplete] = useState(false);
+  const [showVictory, setShowVictory] = useState(false);
+  const [finishPrompt, setFinishPrompt] = useState(false);
+  const [finisherActive, setFinisherActive] = useState(false);
+  const [monsterDead, setMonsterDead] = useState(false);
   const [coinsEarned, setCoinsEarned] = useState(0);
   const [playerIdleSprite, setPlayerIdleSprite] = useState(null);
   const [playerRunSprite, setPlayerRunSprite] = useState(null);
@@ -33,6 +37,9 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
   const playerComboRef = useRef({ sequence: [], durations: [], totalDuration: 0 });
   const monsterAttackToggleRef = useRef(false);
   const lastMonsterAttackStartRef = useRef(null);
+  const finisherStartRef = useRef(0);
+  const finisherHitRef = useRef(false);
+  const finisherDoneRef = useRef(false);
 
   const isPomodoro = Boolean(task?.isPomodoro);
   const studyMinutes = task?.timeEstimate || 25;
@@ -67,7 +74,7 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
 
   // Timer effect
   useEffect(() => {
-    if (completed || paused) return;
+    if (questComplete || paused) return;
 
     const interval = setInterval(() => {
       const now = performance.now();
@@ -84,7 +91,7 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
     }, 100);
 
     return () => clearInterval(interval);
-  }, [completed, paused, duration, isPomodoro, phase]);
+  }, [questComplete, paused, duration, isPomodoro, phase]);
 
   useEffect(() => {
     setElapsed(0);
@@ -198,7 +205,7 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
     drawFrame(playerCanvas, playerIdleSprite, 0, PLAYER_SIZE);
     drawFrame(monsterCanvas, monsterAttackSprite, 0, MONSTER_SIZE);
 
-    if (paused || completed) {
+    if (paused || showVictory) {
       return undefined;
     }
 
@@ -257,6 +264,75 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
 
     let animationId;
     const render = (now) => {
+      if (questComplete && !finisherActive) {
+        if (playerSide) {
+          playerSide.style.transform = 'translateX(0px)';
+        }
+        if (monsterSide) {
+          monsterSide.style.transform = 'translateX(0px)';
+        }
+        drawFrame(playerCanvas, playerIdleSprite, getIdleFrame(now, playerIdleSprite), PLAYER_SIZE);
+        const monsterSheet = monsterIdleSprite || monsterAttackSprite;
+        drawFrame(monsterCanvas, monsterSheet, getIdleFrame(now, monsterSheet), MONSTER_SIZE);
+
+        animationId = requestAnimationFrame(render);
+        return;
+      }
+      if (finisherActive) {
+        const windupMs = 450;
+        const strikeMs = 1100;
+        const recoveryMs = 350;
+        const totalMs = windupMs + strikeMs + recoveryMs;
+        const specialAttackSprite =
+          playerRunAttackSprite ||
+          playerJumpSprite ||
+          playerAttackSprites[playerAttackSprites.length - 1] ||
+          playerAttackSprites[0];
+        const finisherFrameDuration = FRAME_DURATION_MS * 2.2;
+        const finisherElapsed = now - finisherStartRef.current;
+        const isWindup = finisherElapsed >= 0 && finisherElapsed < windupMs;
+        const isStrike = finisherElapsed >= windupMs && finisherElapsed < windupMs + strikeMs;
+        const strikeElapsed = Math.max(0, finisherElapsed - windupMs);
+        const runProgress = isWindup ? Math.min(1, finisherElapsed / windupMs) : 1;
+
+        if (playerSide) {
+          playerSide.style.transform = `translateX(${runProgress * RUN_OFFSET_PX * 0.85}px)`;
+        }
+        if (monsterSide) {
+          monsterSide.style.transform = 'translateX(0px)';
+        }
+
+        const playerFrame = isWindup
+          ? Math.floor(finisherElapsed / FRAME_DURATION_MS) % runFrames
+          : isStrike
+            ? Math.floor(strikeElapsed / finisherFrameDuration) % getFrameCount(specialAttackSprite)
+            : 0;
+        const playerSheet = isWindup ? playerRunSprite : specialAttackSprite;
+        drawFrame(playerCanvas, playerSheet, playerFrame, PLAYER_SIZE);
+
+        const hitMoment = windupMs + strikeMs * 0.55;
+        if (!finisherHitRef.current && finisherElapsed >= hitMoment) {
+          finisherHitRef.current = true;
+          setMonsterDead(true);
+        }
+
+        const monsterSheet = finisherElapsed >= hitMoment
+          ? (monsterHitSprite || monsterIdleSprite || monsterAttackSprite)
+          : (monsterIdleSprite || monsterAttackSprite);
+        const monsterFrame = isStrike
+          ? Math.floor(strikeElapsed / finisherFrameDuration) % getFrameCount(monsterSheet)
+          : getIdleFrame(now, monsterSheet);
+        drawFrame(monsterCanvas, monsterSheet, monsterFrame, MONSTER_SIZE);
+
+        if (!finisherDoneRef.current && finisherElapsed >= totalMs) {
+          finisherDoneRef.current = true;
+          setFinisherActive(false);
+          setShowVictory(true);
+        }
+
+        animationId = requestAnimationFrame(render);
+        return;
+      }
       const comboData = playerComboRef.current;
       const fallbackAttackSprite = playerAttackSprites[playerAttackIndexRef.current % playerAttackSprites.length];
       const comboSprites = comboData.sequence.length > 0 ? comboData.sequence : [fallbackAttackSprite];
@@ -405,22 +481,24 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
     monsterWalkSprite,
     monsterShieldSprite,
     paused,
-    completed,
+    questComplete,
+    finisherActive,
+    showVictory,
   ]);
 
   const handleComplete = () => {
-    if (completed) return;
-    setCompleted(true);
+    if (questComplete) return;
+    setQuestComplete(true);
 
     if (task?.isPomodoro) {
       setCoinsEarned(20);
-      return;
+    } else {
+      const startedAt = task?.startedAt || new Date().toISOString();
+      gameState.updateTask(task.id, { timeSpent: elapsed, startedAt });
+      const result = gameState.completeTask(task.id, { timeSpentMs: elapsed, startedAt });
+      setCoinsEarned(result?.coinsEarned || COIN_REWARDS[task.priority] || 20);
     }
-
-    const startedAt = task?.startedAt || new Date().toISOString();
-    gameState.updateTask(task.id, { timeSpent: elapsed, startedAt });
-    const result = gameState.completeTask(task.id, { timeSpentMs: elapsed, startedAt });
-    setCoinsEarned(result?.coinsEarned || COIN_REWARDS[task.priority] || 20);
+    setFinishPrompt(true);
   };
 
   const handlePause = () => {
@@ -447,10 +525,20 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
   const monsterHealth = isPomodoro && phase === 'break' ? 0 : Math.max(0, (1 - progress) * 100);
   const playerHealth = isPomodoro && phase === 'break' ? Math.max(0, (1 - progress) * 100) : 100;
   const phaseLabel = isPomodoro ? (phase === 'break' ? 'Break' : 'Study') : null;
+
+  const handleMonsterClick = () => {
+    if (!finishPrompt || finisherActive || showVictory) return;
+    finisherStartRef.current = performance.now();
+    finisherHitRef.current = false;
+    finisherDoneRef.current = false;
+    setMonsterDead(false);
+    setFinishPrompt(false);
+    setFinisherActive(true);
+  };
   return (
     <div className="screen battle-screen fullscreen">
       <div 
-        className="battle-arena"
+        className={`battle-arena${finisherActive ? ' finisher-zoom' : ''}`}
         style={{
           backgroundImage: `url(${dungeonRoom})`,
           backgroundSize: 'cover',
@@ -458,6 +546,11 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
         }}
       >
         <div className="battle-arena-overlay" />
+        {finishPrompt && (
+          <div className="finisher-prompt">
+            Click the monster to finish it!
+          </div>
+        )}
         <header className="battle-header">
           <div className="battle-timer">
             <span>{formatTime(remaining)}</span>
@@ -494,7 +587,21 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
             </div>
           </div>
 
-        <div className="combatant monster-side" ref={monsterSideRef}>
+        <div
+            className={`combatant monster-side${monsterDead ? ' dead' : ''}${finishPrompt ? ' clickable' : ''}`}
+            ref={monsterSideRef}
+            onClick={handleMonsterClick}
+            onKeyDown={(event) => {
+              if (!finishPrompt) return;
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                handleMonsterClick();
+              }
+            }}
+            role="button"
+            tabIndex={finishPrompt ? 0 : -1}
+            aria-label="Monster"
+          >
             <div className="sprite-container">
               <canvas
                 ref={monsterCanvasRef}
@@ -513,16 +620,26 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
         </button>
 
         <div className="battle-controls">
-          <button className="btn btn-flee btn-icon" onClick={handlePause} aria-label="Pause">
+          <button
+            className="btn btn-flee btn-icon"
+            onClick={handlePause}
+            aria-label="Pause"
+            disabled={questComplete}
+          >
             {paused ? '▶' : '⏸'}
           </button>
-          <button className="btn btn-flee btn-icon" onClick={handleComplete} aria-label="Complete">
+          <button
+            className="btn btn-flee btn-icon"
+            onClick={handleComplete}
+            aria-label="Complete"
+            disabled={questComplete}
+          >
             ✓
           </button>
         </div>
 
         {/* Victory Overlay */}
-        {completed && (
+        {showVictory && (
           <div className="victory-overlay">
             <div className="victory-content">
               <h2>⚔️ Victory! ⚔️</h2>
