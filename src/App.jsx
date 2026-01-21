@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { SCREENS } from './data/constants';
 import { useGameState } from './hooks/useGameState';
 import { useLocalStorage } from './hooks/useLocalStorage';
@@ -10,6 +10,31 @@ import RecordsScreen from './components/RecordsScreen';
 import { getApiBaseUrl, postJson } from './utils/api';
 import './App.css';
 
+const SCREEN_HASH = {
+  [SCREENS.HOME]: '#/home',
+  [SCREENS.TASKS]: '#/tasks',
+  [SCREENS.BATTLE]: '#/battle',
+  [SCREENS.COLLECTIONS]: '#/collections',
+  [SCREENS.RECORDS]: '#/records',
+};
+
+const getScreenFromHash = (hash) => {
+  const value = (hash || '').replace(/^#\/?/, '');
+  switch (value.split('?')[0]) {
+    case 'tasks':
+      return SCREENS.TASKS;
+    case 'battle':
+      return SCREENS.BATTLE;
+    case 'collections':
+      return SCREENS.COLLECTIONS;
+    case 'records':
+      return SCREENS.RECORDS;
+    case 'home':
+    default:
+      return SCREENS.HOME;
+  }
+};
+
 function App() {
   const [currentScreen, setCurrentScreen] = useState(SCREENS.HOME);
   const [selectedTask, setSelectedTask] = useState(null);
@@ -17,6 +42,20 @@ function App() {
   const [googleUser] = useLocalStorage('pomoDungeon_googleUser', null);
   const sessionIdRef = useRef(null);
   const sessionStartRef = useRef(null);
+  const pushHistory = useCallback((screen, task, { replace = false } = {}) => {
+    const hash = SCREEN_HASH[screen] || SCREEN_HASH[SCREENS.HOME];
+    const url = `${window.location.pathname}${window.location.search}${hash}`;
+    const state = { screen };
+    if (task) {
+      state.task = task;
+      if (task.id) state.taskId = task.id;
+    }
+    if (replace) {
+      window.history.replaceState(state, '', url);
+    } else {
+      window.history.pushState(state, '', url);
+    }
+  }, []);
 
   useEffect(() => {
     const handleWheel = (event) => {
@@ -112,16 +151,75 @@ function App() {
     };
   }, [googleUser?.sub, googleUser?.email, googleUser?.name, googleUser?.picture]);
 
+  useEffect(() => {
+    const resolveTaskFromState = (state) => {
+      if (state?.task) return state.task;
+      if (state?.taskId) {
+        return gameState.tasks.find((task) => task.id === state.taskId) || null;
+      }
+      return null;
+    };
+
+    const applyNavigationState = (state, hash, { replace = false } = {}) => {
+      const screen = state?.screen || getScreenFromHash(hash);
+      if (screen === SCREENS.BATTLE) {
+        const task = resolveTaskFromState(state);
+        if (!task) {
+          setSelectedTask(null);
+          setCurrentScreen(SCREENS.TASKS);
+          pushHistory(SCREENS.TASKS, null, { replace: true });
+          return;
+        }
+        setSelectedTask(task);
+        setCurrentScreen(screen);
+        if (replace) {
+          pushHistory(screen, task, { replace: true });
+        }
+        return;
+      }
+
+      setSelectedTask(null);
+      setCurrentScreen(screen);
+      if (replace) {
+        pushHistory(screen, null, { replace: true });
+      }
+    };
+
+    const handlePopState = (event) => {
+      applyNavigationState(event.state, window.location.hash);
+    };
+
+    const handleHashChange = () => {
+      applyNavigationState(window.history.state, window.location.hash);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    window.addEventListener('hashchange', handleHashChange);
+    applyNavigationState(window.history.state, window.location.hash, { replace: true });
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('hashchange', handleHashChange);
+    };
+  }, [gameState.tasks, pushHistory]);
+
   const navigateTo = (screen, task = null) => {
-    if (task) setSelectedTask(task);
+    if (screen === SCREENS.BATTLE && !task) return;
+    if (task) {
+      setSelectedTask(task);
+    } else if (screen !== SCREENS.BATTLE) {
+      setSelectedTask(null);
+    }
     setCurrentScreen(screen);
+    pushHistory(screen, task);
   };
 
   const startTask = (task) => {
     const startedAt = new Date().toISOString();
     gameState.updateTask(task.id, { startedAt });
-    setSelectedTask({ ...task, startedAt });
+    const nextTask = { ...task, startedAt };
+    setSelectedTask(nextTask);
     setCurrentScreen(SCREENS.BATTLE);
+    pushHistory(SCREENS.BATTLE, nextTask);
   };
 
   const renderScreen = () => {
