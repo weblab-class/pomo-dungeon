@@ -1,19 +1,36 @@
-# React + Vite
+# Pomo Dungeon
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Pomo Dungeon is a gamified pomodoro + task tracker. Create quests, fight monsters,
+unlock avatars, and track your focus stats. The app works fully offline with
+local storage, and can optionally sync to MongoDB when Google sign-in is enabled.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- Task quests with priorities, deadlines, and a battle flow
+- Pomodoro-style focus timer + rewards
+- Collectible avatars and coin economy
+- Records view for focus stats and quests
+- Optional Google sign-in + cloud sync
 
-## React Compiler
+## Quick Start
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```bash
+npm install
+npm run dev
+```
 
-## Expanding the ESLint configuration
+Open `http://localhost:5173`.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Environment Variables
+
+Create a `.env` or `.env.local` file in the project root as needed:
+
+- `MONGODB_URI` (optional): Mongo connection string for the Vite dev API
+  middleware in `server/`. Without it, API calls will fail and the app will
+  continue using local storage.
+- `VITE_API_BASE_URL` (optional): Base URL for a separate API server. If empty,
+  the app uses the Vite dev middleware.
+- `VITE_GOOGLE_CLIENT_ID` (optional): Google OAuth client ID to enable sign-in.
 
 ## Google Sign-In (dev)
 
@@ -22,7 +39,20 @@ If you are developing a production application, we recommend using TypeScript wi
    - `http://localhost:5173`
    - `http://127.0.0.1:5173`
    - Any HTTPS dev tunnel or custom domain you use.
-3. Add a `.env.local` file with:
+3. Add to `.env.local`:
    - `VITE_GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com`
 
 Note: Google sign-in requires HTTPS for non-localhost origins.
+
+## Scripts
+
+- `npm run dev` - start Vite dev server
+- `npm run build` - build for production
+- `npm run preview` - preview the production build
+- `npm run lint` - run ESLint
+
+## Project Layout
+
+- `src/` - React UI and game logic
+- `server/` - Vite middleware API (MongoDB + user/task tracking)
+- `assets/` + `public/assets/` - sprite sheets and art assets
