@@ -1520,6 +1520,7 @@ body {
   z-index: 2;
 }
 
+
 .btn-battle {
   padding: 14px 32px;
   font-size: 1rem;
@@ -2634,6 +2635,7 @@ body {
   .battle-controls {
     bottom: 12px;
   }
+
 
   .finisher-prompt {
     top: 70px;

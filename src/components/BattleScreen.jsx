@@ -1,5 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { AVATARS, MONSTERS, COIN_REWARDS, DUNGEON_ROOMS } from '../data/constants';
+import { useLocalStorage } from '../hooks/useLocalStorage';
+import battleOppenheimerAudio from '../../audio/oppenheimer.mp3';
+import battleNightAudio from '../../audio/the_night_before_battle.mp3';
+import battleRiverAudio from '../../audio/down_by_the_river.mp3';
 
 function BattleScreen({ task, gameState, onExit, onComplete }) {
   // Initialize elapsed from task's saved timeSpent (for resume functionality)
@@ -25,6 +29,17 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
   const [monsterWalkSprite, setMonsterWalkSprite] = useState(null);
   const [monsterShieldSprite, setMonsterShieldSprite] = useState(null);
   const [phase, setPhase] = useState('study');
+  const [musicEnabled, setMusicEnabled] = useLocalStorage('pomoDungeon_musicEnabled', true);
+  const [musicVolume] = useLocalStorage('pomoDungeon_musicVolume', 0.35);
+  const battleTracks = [
+    { id: 'oppenheimer', label: 'Oppenheimer', src: battleOppenheimerAudio },
+    { id: 'night', label: 'Night Before Battle', src: battleNightAudio },
+    { id: 'river', label: 'Down By The River', src: battleRiverAudio },
+  ];
+  const [battleTrackId, setBattleTrackId] = useLocalStorage('pomoDungeon_battleTrack', battleTracks[0].id);
+  const audioRef = useRef(null);
+  const audioSourceRef = useRef(battleTracks[0].src);
+  const musicEnabledRef = useRef(musicEnabled);
   
   const startTimeRef = useRef(performance.now() - (task?.timeSpent || 0));
   const pausedTimeRef = useRef(0);
@@ -61,6 +76,66 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
   
   // Get dungeon room from task or use first one as default
   const dungeonRoom = task?.dungeonRoom || DUNGEON_ROOMS[0];
+
+  const activeBattleTrack =
+    battleTracks.find((track) => track.id === battleTrackId) || battleTracks[0];
+
+  useEffect(() => {
+    musicEnabledRef.current = musicEnabled;
+  }, [musicEnabled]);
+
+  useEffect(() => {
+    const audio = new Audio(activeBattleTrack.src);
+    audio.loop = true;
+    audio.volume = Math.max(0, Math.min(1, musicVolume));
+    audio.preload = 'auto';
+    audioRef.current = audio;
+    audioSourceRef.current = activeBattleTrack.src;
+
+    const attemptPlay = () => {
+      if (!audioRef.current || !musicEnabledRef.current) return;
+      audioRef.current.play().catch(() => {});
+    };
+
+    if (musicEnabledRef.current) attemptPlay();
+    window.addEventListener('pointerdown', attemptPlay, { once: true });
+    window.addEventListener('keydown', attemptPlay, { once: true });
+
+    return () => {
+      window.removeEventListener('pointerdown', attemptPlay);
+      window.removeEventListener('keydown', attemptPlay);
+      audio.pause();
+      audio.currentTime = 0;
+      audioRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (audioSourceRef.current !== activeBattleTrack.src) {
+      audioSourceRef.current = activeBattleTrack.src;
+      audio.pause();
+      audio.currentTime = 0;
+      audio.src = activeBattleTrack.src;
+      audio.load();
+      if (musicEnabledRef.current) {
+        audio.play().catch(() => {});
+      }
+    }
+  }, [activeBattleTrack.src]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.volume = Math.max(0, Math.min(1, musicVolume));
+    if (musicEnabled && !paused) {
+      audio.play().catch(() => {});
+    } else {
+      audio.pause();
+    }
+  }, [musicEnabled, musicVolume, paused]);
 
   useEffect(() => {
     const nextElapsed = task?.timeSpent || 0;
@@ -545,6 +620,14 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
     setPaused(!paused);
   };
 
+  const handleVictoryContinue = () => {
+    if (task?.id && !task?.isPomodoro) {
+      // Ensure the completed quest is removed from the quest board.
+      gameState.deleteTask(task.id);
+    }
+    onComplete();
+  };
+
   const formatTime = (ms) => {
     const total = Math.max(0, Math.floor(ms / 1000));
     const m = Math.floor(total / 60);
@@ -566,6 +649,15 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
     setMonsterDead(false);
     setFinishPrompt(false);
     setFinisherActive(true);
+  };
+  const handleToggleMusic = () => {
+    setMusicEnabled(!musicEnabled);
+  };
+
+  const handleNextTrack = () => {
+    const currentIndex = battleTracks.findIndex((track) => track.id === battleTrackId);
+    const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % battleTracks.length;
+    setBattleTrackId(battleTracks[nextIndex].id);
   };
   return (
     <div className="screen battle-screen fullscreen">
@@ -668,6 +760,24 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
           >
             ✓
           </button>
+          <button
+            className="btn btn-flee btn-icon"
+            type="button"
+            onClick={handleToggleMusic}
+            aria-label={`Music ${musicEnabled ? 'on' : 'off'}`}
+            title={`Music ${musicEnabled ? 'On' : 'Off'}`}
+          >
+            {musicEnabled ? '🔊' : '🔇'}
+          </button>
+          <button
+            className="btn btn-flee"
+            type="button"
+            onClick={handleNextTrack}
+            aria-label={`Switch music (current: ${activeBattleTrack.label})`}
+            title={`Switch music (current: ${activeBattleTrack.label})`}
+          >
+            Switch Track
+          </button>
         </div>
 
         {/* Victory Overlay */}
@@ -680,7 +790,7 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
                 <span className="coin-icon">🪙</span>
                 <span>+{coinsEarned}</span>
               </div>
-              <button className="btn btn-primary" onClick={onComplete}>
+              <button className="btn btn-primary" onClick={handleVictoryContinue}>
                 Continue
               </button>
             </div>
