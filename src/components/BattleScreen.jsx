@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { AVATARS, MONSTERS, COIN_REWARDS, DUNGEON_ROOMS } from '../data/constants';
+import { useLocalStorage } from '../hooks/useLocalStorage';
 
 function BattleScreen({ task, gameState, onExit, onComplete }) {
   // Initialize elapsed from task's saved timeSpent (for resume functionality)
   const [elapsed, setElapsed] = useState(task?.timeSpent || 0);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 768);
   const [paused, setPaused] = useState(false);
   const [questComplete, setQuestComplete] = useState(false);
   const [showVictory, setShowVictory] = useState(false);
@@ -24,6 +26,16 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
   const [monsterWalkSprite, setMonsterWalkSprite] = useState(null);
   const [monsterShieldSprite, setMonsterShieldSprite] = useState(null);
   const [phase, setPhase] = useState('study');
+  const [musicEnabled, setMusicEnabled] = useLocalStorage('pomoDungeon_musicEnabled', true);
+  const [musicVolume] = useLocalStorage('pomoDungeon_musicVolume', 0.35);
+  const [showPlaylist, setShowPlaylist] = useState(false);
+  const musicEnabledRef = useRef(musicEnabled);
+  const musicVolumeRef = useRef(musicVolume);
+  const pausedRef = useRef(paused);
+  const userInteractedRef = useRef(false);
+  const iframeRef = useRef(null);
+  const widgetRef = useRef(null);
+  const soundCloudReadyRef = useRef(false);
   
   const startTimeRef = useRef(performance.now() - (task?.timeSpent || 0));
   const pausedTimeRef = useRef(0);
@@ -48,18 +60,183 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
     (phase === 'break' ? breakMinutes : studyMinutes) * 60 * 1000;
   const avatar = AVATARS[gameState.player.currentAvatar] || AVATARS.knight_1;
   const monster = MONSTERS[task?.monsterType] || MONSTERS.goblin;
-  const PLAYER_SIZE = 450;
-  const MONSTER_SIZE = 550;
+  const PLAYER_SIZE = isMobile ? 260 : 450;
+  const MONSTER_SIZE = isMobile ? 320 : 550;
   const ATTACK_COOLDOWN_MS = 5000;
   const FRAME_DURATION_MS = 120;
   const ATTACK_DELAY_MS = 200;
-  const RUN_OFFSET_PX = 500;
-  const MONSTER_RUN_OFFSET_PX = 450;
+  const RUN_OFFSET_PX = isMobile ? 220 : 500;
+  const MONSTER_RUN_OFFSET_PX = isMobile ? 200 : 450;
   const PLAYER_Y_OFFSET = 0;
-  const MONSTER_Y_OFFSET = 175;
+  const MONSTER_Y_OFFSET = isMobile ? 110 : 175;
   
   // Get dungeon room from task or use first one as default
   const dungeonRoom = task?.dungeonRoom || DUNGEON_ROOMS[0];
+  const soundCloudPlaylistUrl = 'https://on.soundcloud.com/2acGXci60bIST51lyF';
+  const buildWidgetUrl = (url) =>
+    `https://w.soundcloud.com/player/?url=${encodeURIComponent(
+      url
+    )}&auto_play=false&show_comments=false&show_user=false&show_reposts=false&visual=false`;
+  const [soundCloudWidgetSrc, setSoundCloudWidgetSrc] = useState(() =>
+    buildWidgetUrl(soundCloudPlaylistUrl)
+  );
+  const withWidget = (action) => {
+    const widget = widgetRef.current;
+    const iframe = iframeRef.current;
+    if (!widget || !soundCloudReadyRef.current) return;
+    if (!iframe || !iframe.contentWindow) return;
+    try {
+      action(widget);
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error(error);
+    }
+  };
+
+  useEffect(() => {
+    musicEnabledRef.current = musicEnabled;
+  }, [musicEnabled]);
+
+  useEffect(() => {
+    musicVolumeRef.current = musicVolume;
+  }, [musicVolume]);
+
+  useEffect(() => {
+    pausedRef.current = paused;
+  }, [paused]);
+
+  useEffect(() => {
+    const handleUserInteract = () => {
+      userInteractedRef.current = true;
+      if (musicEnabledRef.current && !pausedRef.current) {
+        withWidget((widget) => widget.play());
+      }
+    };
+
+    window.addEventListener('pointerdown', handleUserInteract, { once: true });
+    window.addEventListener('keydown', handleUserInteract, { once: true });
+    return () => {
+      window.removeEventListener('pointerdown', handleUserInteract);
+      window.removeEventListener('keydown', handleUserInteract);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const resolveWidgetSrc = async () => {
+      try {
+        const res = await fetch(
+          `https://soundcloud.com/oembed?format=json&url=${encodeURIComponent(
+            soundCloudPlaylistUrl
+          )}`
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data?.html || cancelled) return;
+        const doc = new DOMParser().parseFromString(data.html, 'text/html');
+        const iframe = doc.querySelector('iframe');
+        const src = iframe?.getAttribute('src');
+        if (src && !cancelled) {
+          setSoundCloudWidgetSrc(src);
+        }
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error(error);
+      }
+    };
+
+    resolveWidgetSrc();
+    return () => {
+      cancelled = true;
+    };
+  }, [soundCloudPlaylistUrl]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const ensureScript = () =>
+      new Promise((resolve, reject) => {
+        if (window.SC?.Widget) {
+          resolve();
+          return;
+        }
+        const existing = document.querySelector('script[data-soundcloud-widget]');
+        if (existing) {
+          existing.addEventListener('load', () => resolve());
+          existing.addEventListener('error', () => reject(new Error('SoundCloud SDK failed')));
+          return;
+        }
+        const script = document.createElement('script');
+        script.src = 'https://w.soundcloud.com/player/api.js';
+        script.async = true;
+        script.dataset.soundcloudWidget = 'true';
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error('SoundCloud SDK failed'));
+        document.body.appendChild(script);
+      });
+
+    const initWidget = async () => {
+      try {
+        await ensureScript();
+        if (cancelled) return;
+        if (!iframeRef.current) return;
+        const widget = window.SC.Widget(iframeRef.current);
+        widgetRef.current = widget;
+        widget.bind(window.SC.Widget.Events.READY, () => {
+          if (cancelled) return;
+          soundCloudReadyRef.current = true;
+          withWidget((current) =>
+            current.setVolume(Math.round(Math.max(0, Math.min(1, musicVolumeRef.current)) * 100))
+          );
+          if (musicEnabledRef.current && !pausedRef.current && userInteractedRef.current) {
+            withWidget((current) => current.play());
+          }
+        });
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error(error);
+      }
+    };
+
+    initWidget();
+
+    return () => {
+      cancelled = true;
+      withWidget((widget) => widget.pause());
+      widgetRef.current = null;
+      soundCloudReadyRef.current = false;
+    };
+  }, [soundCloudWidgetSrc]);
+
+  useEffect(() => {
+    withWidget((widget) =>
+      widget.setVolume(Math.round(Math.max(0, Math.min(1, musicVolume)) * 100))
+    );
+  }, [musicVolume]);
+
+  useEffect(() => {
+    if (musicEnabled && !paused) {
+      withWidget((widget) => widget.play());
+    } else {
+      withWidget((widget) => widget.pause());
+    }
+  }, [musicEnabled, paused]);
+
+  useEffect(() => {
+    const nextElapsed = task?.timeSpent || 0;
+    setElapsed(nextElapsed);
+    setPaused(false);
+    setQuestComplete(false);
+    setShowVictory(false);
+    setFinishPrompt(false);
+    setFinisherActive(false);
+    setMonsterDead(false);
+    setCoinsEarned(0);
+    setPhase('study');
+    startTimeRef.current = performance.now() - nextElapsed;
+    pausedTimeRef.current = 0;
+    finisherHitRef.current = false;
+    finisherDoneRef.current = false;
+  }, [task?.id, task?.timeSpent]);
 
   // Handle flee - save progress and exit
   const handleFlee = () => {
@@ -67,6 +244,9 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
     if (!paused) {
       setPaused(true);
     }
+    setShowPlaylist(false);
+    // Stop battle music immediately on flee.
+    withWidget((widget) => widget.pause());
     // Save the elapsed time to the task
     gameState.updateTask(task.id, { timeSpent: elapsed });
     onExit();
@@ -94,11 +274,20 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
   }, [questComplete, paused, duration, isPomodoro, phase]);
 
   useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    if (!isPomodoro) return;
     setElapsed(0);
     startTimeRef.current = performance.now();
     pausedTimeRef.current = 0;
     setPaused(false);
-  }, [phase]);
+  }, [phase, isPomodoro]);
 
   const loadImage = (src, setter) => {
     const img = new Image();
@@ -480,6 +669,11 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
     monsterHitSprite,
     monsterWalkSprite,
     monsterShieldSprite,
+    PLAYER_SIZE,
+    MONSTER_SIZE,
+    RUN_OFFSET_PX,
+    MONSTER_RUN_OFFSET_PX,
+    MONSTER_Y_OFFSET,
     paused,
     questComplete,
     finisherActive,
@@ -513,6 +707,14 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
     setPaused(!paused);
   };
 
+  const handleVictoryContinue = () => {
+    if (task?.id && !task?.isPomodoro) {
+      // Ensure the completed quest is removed from the quest board.
+      gameState.deleteTask(task.id);
+    }
+    onComplete();
+  };
+
   const formatTime = (ms) => {
     const total = Math.max(0, Math.floor(ms / 1000));
     const m = Math.floor(total / 60);
@@ -534,6 +736,13 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
     setMonsterDead(false);
     setFinishPrompt(false);
     setFinisherActive(true);
+  };
+  const handleToggleMusic = () => {
+    setMusicEnabled(!musicEnabled);
+  };
+
+  const handleTogglePlaylist = () => {
+    setShowPlaylist((prev) => !prev);
   };
   return (
     <div className="screen battle-screen fullscreen">
@@ -636,6 +845,55 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
           >
             ✓
           </button>
+          <button
+            className="btn btn-flee btn-icon"
+            type="button"
+            onClick={handleToggleMusic}
+            aria-label={`Music ${musicEnabled ? 'on' : 'off'}`}
+            title={`Music ${musicEnabled ? 'On' : 'Off'}`}
+          >
+            {musicEnabled ? '🔊' : '🔇'}
+          </button>
+          <button
+            className="btn btn-flee"
+            type="button"
+            onClick={handleTogglePlaylist}
+            aria-label={showPlaylist ? 'Hide playlist' : 'Choose track'}
+            title={showPlaylist ? 'Hide playlist' : 'Choose track'}
+          >
+            {showPlaylist ? 'Hide Playlist' : 'Choose Track'}
+          </button>
+        </div>
+
+        <div
+          className={`soundcloud-player${showPlaylist ? ' is-open' : ''}`}
+          role="dialog"
+          aria-label="Battle playlist"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setShowPlaylist(false);
+            }
+          }}
+        >
+          <div className="soundcloud-player-card">
+            <div className="soundcloud-player-header">
+              <span>Choose a track</span>
+              <button
+                className="soundcloud-player-close"
+                type="button"
+                onClick={() => setShowPlaylist(false)}
+                aria-label="Close playlist"
+              >
+                ×
+              </button>
+            </div>
+            <iframe
+              ref={iframeRef}
+              title="SoundCloud battle playlist"
+              allow="autoplay; clipboard-write; encrypted-media"
+              src={soundCloudWidgetSrc}
+            />
+          </div>
         </div>
 
         {/* Victory Overlay */}
@@ -648,7 +906,7 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
                 <span className="coin-icon">🪙</span>
                 <span>+{coinsEarned}</span>
               </div>
-              <button className="btn btn-primary" onClick={onComplete}>
+              <button className="btn btn-primary" onClick={handleVictoryContinue}>
                 Continue
               </button>
             </div>

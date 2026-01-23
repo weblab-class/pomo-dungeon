@@ -100,6 +100,7 @@ export const SCREENS = {
   BATTLE: "battle",
   COLLECTIONS: "collections",
   RECORDS: "records",
+  CUSTOMIZE: "customize",
 };
 
 // Mode names

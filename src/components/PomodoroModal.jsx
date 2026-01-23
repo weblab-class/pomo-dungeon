@@ -1,8 +1,22 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
-function PomodoroModal({ isOpen, onClose, onSubmit }) {
-  const [studyMinutes, setStudyMinutes] = useState(25);
-  const [breakMinutes, setBreakMinutes] = useState(5);
+function PomodoroModal({
+  isOpen,
+  onClose,
+  onSubmit,
+  studyMinutes: studyMinutesDefault = 25,
+  breakMinutes: breakMinutesDefault = 5,
+  submitLabel = 'Accept Quest',
+  title = 'Pomodoro Settings',
+}) {
+  const [studyMinutes, setStudyMinutes] = useState(studyMinutesDefault);
+  const [breakMinutes, setBreakMinutes] = useState(breakMinutesDefault);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setStudyMinutes(studyMinutesDefault);
+    setBreakMinutes(breakMinutesDefault);
+  }, [isOpen, studyMinutesDefault, breakMinutesDefault]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -18,7 +32,7 @@ function PomodoroModal({ isOpen, onClose, onSubmit }) {
     <div className="modal-overlay">
       <div className="modal add-task-modal">
         <div className="modal-header">
-          <h2>Pomodoro Settings</h2>
+          <h2>{title}</h2>
           <button className="modal-close" onClick={onClose}>
             &times;
           </button>
@@ -29,7 +43,9 @@ function PomodoroModal({ isOpen, onClose, onSubmit }) {
             <input
               type="number"
               value={studyMinutes}
-              onChange={(e) => setStudyMinutes(parseInt(e.target.value, 10) || 25)}
+              onChange={(e) =>
+                setStudyMinutes(parseInt(e.target.value, 10) || studyMinutesDefault)
+              }
               min="1"
               max="180"
               required
@@ -40,14 +56,16 @@ function PomodoroModal({ isOpen, onClose, onSubmit }) {
             <input
               type="number"
               value={breakMinutes}
-              onChange={(e) => setBreakMinutes(parseInt(e.target.value, 10) || 5)}
+              onChange={(e) =>
+                setBreakMinutes(parseInt(e.target.value, 10) || breakMinutesDefault)
+              }
               min="1"
               max="60"
               required
             />
           </label>
           <button type="submit" className="btn btn-primary">
-            Accept Quest
+            {submitLabel}
           </button>
         </form>
       </div>

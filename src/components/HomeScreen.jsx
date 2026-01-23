@@ -4,8 +4,8 @@ import { useLocalStorage } from '../hooks/useLocalStorage';
 import { getJson, postJson } from '../utils/api';
 import AddTaskModal from './AddTaskModal';
 import PomodoroModal from './PomodoroModal';
-import homeScreenAudio from '../../audio/homescreen.mp3';
-import homeScreenRedAudio from '../../audio/homescreen_red.mp3';
+import homeScreenAudio from '../../audio/chill_homescreen.mp3';
+import homeScreenRedAudio from '../../audio/the_night_before_battle.mp3';
 
 const W = 320;
 const H = 180;
@@ -18,6 +18,11 @@ function HomeScreen({ gameState, onNavigate }) {
   const [mode, setMode] = useState(MODE.TASKS);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isPomodoroModalOpen, setIsPomodoroModalOpen] = useState(false);
+  const [pomodoroDefaults, setPomodoroDefaults] = useState({
+    studyMinutes: 25,
+    breakMinutes: 5,
+  });
+  const [pomodoroModalPurpose, setPomodoroModalPurpose] = useState('start');
   const [avatarSprite, setAvatarSprite] = useState(null);
   const [googleUser, setGoogleUser] = useLocalStorage('pomoDungeon_googleUser', null);
   const [streakDays] = useLocalStorage('pomoDungeon_streakDays', 0);
@@ -53,6 +58,11 @@ function HomeScreen({ gameState, onNavigate }) {
   const friendsRef = useRef(null);
   const musicEnabledRef = useRef(musicEnabled);
   const musicVolumeRef = useRef(musicVolume);
+  const restartTutorial = useCallback(() => {
+    setMode(MODE.TASKS);
+    setTutorialStep(0);
+    setShowTutorial(true);
+  }, []);
   const dismissTutorial = () => {
     if (googleUser) {
       localStorage.setItem('pomoDungeon_homeTutorialSeen', 'true');
@@ -354,11 +364,11 @@ function HomeScreen({ gameState, onNavigate }) {
     audioRef.current = audio;
 
     const attemptPlay = () => {
-      if (!audioRef.current || !musicEnabledRef.current) return;
+      if (!audioRef.current || !musicEnabledRef.current || showTutorial) return;
       audioRef.current.play().catch(() => {});
     };
 
-    if (musicEnabledRef.current) attemptPlay();
+    if (musicEnabledRef.current && !showTutorial) attemptPlay();
     window.addEventListener('pointerdown', attemptPlay, { once: true });
     window.addEventListener('keydown', attemptPlay, { once: true });
 
@@ -373,7 +383,7 @@ function HomeScreen({ gameState, onNavigate }) {
       audio.currentTime = 0;
       audioRef.current = null;
     };
-  }, []);
+  }, [showTutorial]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -436,13 +446,18 @@ function HomeScreen({ gameState, onNavigate }) {
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
+    if (showTutorial) {
+      audio.pause();
+      audio.currentTime = 0;
+      return;
+    }
     audio.volume = Math.max(0, Math.min(1, musicVolume));
     if (musicEnabled) {
       audio.play().catch(() => {});
     } else {
       audio.pause();
     }
-  }, [musicEnabled, musicVolume]);
+  }, [musicEnabled, musicVolume, showTutorial]);
   const getGoogleAuthHint = () => {
     const { protocol, hostname } = window.location;
     const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
@@ -484,6 +499,10 @@ function HomeScreen({ gameState, onNavigate }) {
   // Lightning state for red moon
   const lightningRef = useRef({ t: 0, cooldown: 0, bolt: [], intensity: 0 });
   
+  // Bat state
+  const batsRef = useRef([]);
+  const batSpawnRef = useRef({ nextTime: 2 });
+
   // Animation time
   const timeRef = useRef(0);
   
@@ -734,6 +753,7 @@ function HomeScreen({ gameState, onNavigate }) {
   const rand = (a, b) => a + Math.random() * (b - a);
   const randi = (a, b) => Math.floor(rand(a, b + 1));
   const easeOutCubic = (x) => 1 - Math.pow(1 - x, 3);
+  const groundY = 132;
 
   const doorRect = useCallback(() => {
     const gate = gateRef.current;
@@ -857,6 +877,105 @@ function HomeScreen({ gameState, onNavigate }) {
         pxRect(x, y, 1, 1, '#b7ffd6');
       }
       ctx.globalAlpha = 1;
+    };
+
+    const spawnBat = (time) => {
+      if (batsRef.current.length >= 5) return;
+      const w = randi(12, 16);
+      const h = randi(5, 7);
+      const fromLeft = Math.random() < 0.5;
+      const baseY = rand(18, 50);
+      const amp = rand(2, 8);
+      const phase = rand(0, Math.PI * 2);
+      const speed = rand(24, 52);
+      const waveSpeed = rand(1.4, 2.2);
+
+      batsRef.current.push({
+        x: fromLeft ? -w - rand(6, 18) : W + rand(6, 18),
+        y: baseY,
+        baseY,
+        amp,
+        phase,
+        waveSpeed,
+        vy: rand(-10, 10),
+        w,
+        h,
+        vx: fromLeft ? speed : -speed,
+        state: 'flying',
+        landedT: 0,
+      });
+
+      batSpawnRef.current.nextTime = time + rand(1.6, 4.2);
+    };
+
+    const updateBats = (dt, time) => {
+      if (time >= batSpawnRef.current.nextTime) {
+        spawnBat(time);
+      }
+
+      const bats = batsRef.current;
+      for (let i = bats.length - 1; i >= 0; i--) {
+        const bat = bats[i];
+        if (bat.state === 'flying') {
+          bat.x += bat.vx * dt;
+          bat.phase += dt * bat.waveSpeed;
+          bat.y = bat.baseY + Math.sin(bat.phase) * bat.amp;
+          bat.baseY = clamp(bat.baseY + bat.vy * dt, 16, 54);
+          if (bat.x < -bat.w - 12 || bat.x > W + bat.w + 12) {
+            bats.splice(i, 1);
+          }
+        } else if (bat.state === 'falling') {
+          bat.y += 120 * dt;
+          bat.x += bat.vx * 0.18 * dt;
+          if (bat.y >= groundY - bat.h) {
+            bat.y = groundY - bat.h;
+            bat.state = 'landed';
+            bat.landedT = rand(1.2, 2.6);
+          }
+        } else if (bat.state === 'landed') {
+          bat.landedT -= dt;
+          if (bat.landedT <= 0) {
+            bats.splice(i, 1);
+          }
+        }
+      }
+    };
+
+    const drawBat = (bat, time) => {
+      if (bat.state === 'landed') {
+        ctx.globalAlpha = 0.35;
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.ellipse(bat.x + bat.w / 2, bat.y + bat.h + 2, 6, 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+
+      const flap = bat.state === 'flying' ? Math.sin(time * 14 + bat.phase) : 0.1;
+      const wingLift = Math.floor(1 + 2 * Math.max(0, flap));
+      const baseY = bat.y + 2;
+      const color = mode === MODE.STOPWATCH ? '#5b2f36' : '#2f394d';
+      const midX = bat.x + Math.floor(bat.w / 2);
+
+      // Body + head
+      pxRect(midX - 2, baseY, 4, 2, color);
+      pxRect(midX - 1, baseY - 1, 2, 1, color);
+
+      // Wings (bat-like with scalloped edges)
+      const wingY = baseY - wingLift;
+      pxRect(bat.x, wingY, 5, 1, color);
+      pxRect(bat.x + bat.w - 5, wingY, 5, 1, color);
+      pxRect(bat.x + 2, wingY + 1, 3, 1, color);
+      pxRect(bat.x + bat.w - 5, wingY + 1, 3, 1, color);
+      pxRect(bat.x + 4, wingY + 2, 2, 1, color);
+      pxRect(bat.x + bat.w - 6, wingY + 2, 2, 1, color);
+      pxRect(midX - 1, wingY + 1, 2, 1, color);
+    };
+
+    const drawBats = (time) => {
+      for (const bat of batsRef.current) {
+        drawBat(bat, time);
+      }
     };
 
     const drawTorch = (tx, ty, time, intensity, lit) => {
@@ -1126,6 +1245,8 @@ function HomeScreen({ gameState, onNavigate }) {
 
       drawBackground();
       drawAmbience(time);
+      updateBats(dt, time);
+      drawBats(time);
       drawPlayerAvatar();
 
       const torchesLit = mode === MODE.TASKS;
@@ -1185,15 +1306,25 @@ function HomeScreen({ gameState, onNavigate }) {
     const gate = gateRef.current;
     const avatar = avatarRef.current;
     const moon = moonRef.current;
+    const bats = batsRef.current;
 
     const overMoon = Math.hypot(mx - moon.x, my - moon.y) <= moon.r;
     const overAvatar = mx >= avatar.x && mx <= avatar.x + avatar.w && my >= avatar.y && my <= avatar.y + avatar.h;
     const overGate = mx >= gate.x && mx <= gate.x + gate.w && my >= gate.y && my <= gate.y + gate.h;
+    const batHitPad = 6;
+    const overBird = bats.some(
+      (bat) =>
+        bat.state === 'flying' &&
+        mx >= bat.x - batHitPad &&
+        mx <= bat.x + bat.w + batHitPad &&
+        my >= bat.y - batHitPad &&
+        my <= bat.y + bat.h + batHitPad
+    );
 
     gate.hover = overGate && !gate.opening;
     avatar.hover = overAvatar;
 
-    canvas.style.cursor = overMoon || gate.hover || overAvatar ? 'pointer' : 'default';
+    canvas.style.cursor = overMoon || gate.hover || overAvatar || overBird ? 'pointer' : 'default';
   };
 
   const handleClick = (e) => {
@@ -1209,11 +1340,27 @@ function HomeScreen({ gameState, onNavigate }) {
     const gate = gateRef.current;
     const avatar = avatarRef.current;
     const moon = moonRef.current;
+    const bats = batsRef.current;
     const d = doorRect();
 
-    // Avatar click -> Collections
+    // Bird click -> Drop to ground
+    const batHitPad = 6;
+    for (const bat of bats) {
+      if (
+        bat.state === 'flying' &&
+        mx >= bat.x - batHitPad &&
+        mx <= bat.x + bat.w + batHitPad &&
+        my >= bat.y - batHitPad &&
+        my <= bat.y + bat.h + batHitPad
+      ) {
+        bat.state = 'falling';
+        return;
+      }
+    }
+
+    // Avatar click -> Customize knight
     if (mx >= avatar.x && mx <= avatar.x + avatar.w && my >= avatar.y && my <= avatar.y + avatar.h) {
-      onNavigate(SCREENS.COLLECTIONS);
+      onNavigate(SCREENS.CUSTOMIZE);
       return;
     }
 
@@ -1226,6 +1373,7 @@ function HomeScreen({ gameState, onNavigate }) {
     // Open dungeon click -> Tasks (blue moon) or Pomodoro (red moon)
     if (gate.openT >= 0.5 && mx >= d.x && mx <= d.x + d.w && my >= d.y && my <= d.y + d.h) {
       if (mode === MODE.STOPWATCH) {
+        setPomodoroModalPurpose('start');
         setIsPomodoroModalOpen(true);
       } else {
       onNavigate(SCREENS.TASKS);
@@ -1249,17 +1397,33 @@ function HomeScreen({ gameState, onNavigate }) {
     >
       <div className="home-navbar">
         <div className="medieval-navbar">
-            <div className="navbar-section navbar-left">
+          <div className="navbar-section navbar-left">
             {mode === MODE.TASKS && (
-                <button
-                  className={`btn-medieval btn-auth navbar-btn${
-                    showTutorial && tutorialStep === 3 ? ' tutorial-highlight' : ''
-                  }`}
-                  onClick={() => setIsModalOpen(true)}
-                >
-                  + Add Quest
-                </button>
+              <button
+                className={`btn-medieval btn-auth navbar-btn${
+                  showTutorial && tutorialStep === 3 ? ' tutorial-highlight' : ''
+                }`}
+                onClick={() => setIsModalOpen(true)}
+              >
+                + Add Quest
+              </button>
             )}
+            {mode === MODE.STOPWATCH && (
+              <button
+                className="btn-medieval btn-auth navbar-btn"
+                type="button"
+                onClick={() => {
+                  setPomodoroModalPurpose('settings');
+                  setIsPomodoroModalOpen(true);
+                }}
+                aria-label={`Pomodoro settings. Study ${pomodoroDefaults.studyMinutes} minutes, break ${pomodoroDefaults.breakMinutes} minutes.`}
+              >
+                Pomodoro {pomodoroDefaults.studyMinutes}/{pomodoroDefaults.breakMinutes}
+              </button>
+            )}
+          </div>
+          <div className="navbar-section navbar-center" aria-label="POMODON">
+            <span className="navbar-title">POMODON</span>
           </div>
           <div className="navbar-section navbar-right">
             <div className="auth-panel navbar-auth" ref={authMenuRef}>
@@ -1274,6 +1438,17 @@ function HomeScreen({ gameState, onNavigate }) {
                 </svg>
                 <span className="streak-count">{streakDays}</span>
               </div>
+              <button
+                className="streak-info-btn"
+                type="button"
+                onClick={restartTutorial}
+                aria-label="Replay home tutorial"
+                title="Replay tutorial"
+              >
+                <span className="streak-info-icon" aria-hidden="true">
+                  i
+                </span>
+              </button>
               {googleUser ? (
                 <div className="auth-menu">
                   <button
@@ -1643,7 +1818,15 @@ function HomeScreen({ gameState, onNavigate }) {
         <PomodoroModal
           isOpen={isPomodoroModalOpen}
           onClose={() => setIsPomodoroModalOpen(false)}
+          studyMinutes={pomodoroDefaults.studyMinutes}
+          breakMinutes={pomodoroDefaults.breakMinutes}
+          submitLabel={pomodoroModalPurpose === 'settings' ? 'Save Settings' : 'Accept Quest'}
           onSubmit={({ studyMinutes, breakMinutes }) => {
+            setPomodoroDefaults({ studyMinutes, breakMinutes });
+            if (pomodoroModalPurpose === 'settings') {
+              setIsPomodoroModalOpen(false);
+              return;
+            }
             const pomodoroTask = {
               id: `pomo-${Date.now()}`,
               name: 'Red Moon Pomodoro',
