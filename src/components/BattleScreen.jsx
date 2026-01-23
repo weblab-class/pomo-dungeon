@@ -80,6 +80,18 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
   const [soundCloudWidgetSrc, setSoundCloudWidgetSrc] = useState(() =>
     buildWidgetUrl(soundCloudPlaylistUrl)
   );
+  const withWidget = (action) => {
+    const widget = widgetRef.current;
+    const iframe = iframeRef.current;
+    if (!widget || !soundCloudReadyRef.current) return;
+    if (!iframe || !iframe.contentWindow) return;
+    try {
+      action(widget);
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error(error);
+    }
+  };
 
   useEffect(() => {
     musicEnabledRef.current = musicEnabled;
@@ -96,10 +108,8 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
   useEffect(() => {
     const handleUserInteract = () => {
       userInteractedRef.current = true;
-      const widget = widgetRef.current;
-      if (!widget || !soundCloudReadyRef.current) return;
       if (musicEnabledRef.current && !pausedRef.current) {
-        widget.play();
+        withWidget((widget) => widget.play());
       }
     };
 
@@ -174,9 +184,11 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
         widget.bind(window.SC.Widget.Events.READY, () => {
           if (cancelled) return;
           soundCloudReadyRef.current = true;
-          widget.setVolume(Math.round(Math.max(0, Math.min(1, musicVolumeRef.current)) * 100));
+          withWidget((current) =>
+            current.setVolume(Math.round(Math.max(0, Math.min(1, musicVolumeRef.current)) * 100))
+          );
           if (musicEnabledRef.current && !pausedRef.current && userInteractedRef.current) {
-            widget.play();
+            withWidget((current) => current.play());
           }
         });
       } catch (error) {
@@ -189,27 +201,23 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
 
     return () => {
       cancelled = true;
-      if (widgetRef.current && soundCloudReadyRef.current) {
-        widgetRef.current.pause();
-      }
+      withWidget((widget) => widget.pause());
       widgetRef.current = null;
       soundCloudReadyRef.current = false;
     };
   }, [soundCloudWidgetSrc]);
 
   useEffect(() => {
-    const widget = widgetRef.current;
-    if (!widget || !soundCloudReadyRef.current) return;
-    widget.setVolume(Math.round(Math.max(0, Math.min(1, musicVolume)) * 100));
+    withWidget((widget) =>
+      widget.setVolume(Math.round(Math.max(0, Math.min(1, musicVolume)) * 100))
+    );
   }, [musicVolume]);
 
   useEffect(() => {
-    const widget = widgetRef.current;
-    if (!widget || !soundCloudReadyRef.current) return;
     if (musicEnabled && !paused) {
-      widget.play();
+      withWidget((widget) => widget.play());
     } else {
-      widget.pause();
+      withWidget((widget) => widget.pause());
     }
   }, [musicEnabled, paused]);
 
@@ -236,6 +244,9 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
     if (!paused) {
       setPaused(true);
     }
+    setShowPlaylist(false);
+    // Stop battle music immediately on flee.
+    withWidget((widget) => widget.pause());
     // Save the elapsed time to the task
     gameState.updateTask(task.id, { timeSpent: elapsed });
     onExit();
