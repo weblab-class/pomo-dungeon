@@ -2414,9 +2414,19 @@ body {
   justify-items: center;
 }
 
+.quest-scrolls-board.is-updating .quest-scroll {
+  transition: none;
+}
+
 .quest-scroll-container {
   width: min(220px, 100%);
-  transform: rotate(var(--rotation, 0deg));
+  transform: rotate(var(--rotation, 0deg)) translateZ(0);
+  transform-origin: center;
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+.quest-scroll-container.quest-scroll-animate {
   animation: pinDrop 0.3s ease-out;
   animation-delay: var(--delay, 0s);
   animation-fill-mode: both;
@@ -2456,6 +2466,8 @@ body {
   position: relative;
   cursor: pointer;
   transition: transform 0.2s, box-shadow 0.2s;
+  will-change: transform;
+  backface-visibility: hidden;
   box-shadow: 
     0 4px 15px rgba(0, 0, 0, 0.3),
     inset 0 0 20px rgba(139, 105, 20, 0.1);

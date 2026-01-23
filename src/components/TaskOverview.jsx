@@ -1,16 +1,25 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { SCREENS, PRIORITY_CONFIG } from '../data/constants';
 import AddTaskModal from './AddTaskModal';
 
 function TaskOverview({ gameState, onNavigate, onStartTask }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [animatedTaskIds, setAnimatedTaskIds] = useState(new Set());
+  const [isBoardUpdating, setIsBoardUpdating] = useState(false);
+  const seenTaskIdsRef = useRef(new Set());
+  const prevTaskIdsRef = useRef('');
 
   // Only show active tasks (not completed)
   const activeTasks = gameState.tasks
     .filter((t) => !t.completed)
     .sort((a, b) => {
       const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
-      return priorityOrder[a.priority] - priorityOrder[b.priority];
+      const priorityDiff = priorityOrder[a.priority] - priorityOrder[b.priority];
+      if (priorityDiff !== 0) return priorityDiff;
+      const aCreated = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bCreated = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      if (aCreated !== bCreated) return aCreated - bCreated;
+      return String(a.id).localeCompare(String(b.id));
     });
 
   const formatTimeRemaining = (deadline) => {
@@ -41,6 +50,65 @@ function TaskOverview({ gameState, onNavigate, onStartTask }) {
     });
   };
 
+  useEffect(() => {
+    const idsSignature = activeTasks.map((task) => task.id).join('|');
+    if (idsSignature !== prevTaskIdsRef.current) {
+      prevTaskIdsRef.current = idsSignature;
+      setIsBoardUpdating(true);
+      const timer = setTimeout(() => setIsBoardUpdating(false), 200);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [activeTasks]);
+
+  useEffect(() => {
+    const seen = seenTaskIdsRef.current;
+    const newlyAdded = [];
+    for (const task of activeTasks) {
+      if (!seen.has(task.id)) {
+        seen.add(task.id);
+        newlyAdded.push(task.id);
+      }
+    }
+    if (newlyAdded.length === 0) return;
+
+    setAnimatedTaskIds((prev) => {
+      const next = new Set(prev);
+      newlyAdded.forEach((id) => next.add(id));
+      return next;
+    });
+
+    newlyAdded.forEach((id) => {
+      setTimeout(() => {
+        setAnimatedTaskIds((prev) => {
+          if (!prev.has(id)) return prev;
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      }, 350);
+    });
+  }, [activeTasks]);
+
+  const getTaskSeed = (id) => {
+    const text = String(id || '');
+    let hash = 0;
+    for (let i = 0; i < text.length; i += 1) {
+      hash = (hash * 31 + text.charCodeAt(i)) | 0;
+    }
+    return Math.abs(hash);
+  };
+
+  const getTaskStyle = (task) => {
+    const seed = getTaskSeed(task.id);
+    const rotation = ((seed % 5) - 2) * 2;
+    const delay = (seed % 10) * 0.02;
+    return {
+      '--rotation': `${rotation}deg`,
+      '--delay': `${delay}s`,
+    };
+  };
+
   return (
     <div className="screen task-overview-screen fullscreen">
       <div className="quest-board-container fullscreen">
@@ -68,16 +136,13 @@ function TaskOverview({ gameState, onNavigate, onStartTask }) {
                   </div>
                 </div>
               ) : (
-                <div className="quest-scrolls-board">
-                  {activeTasks.map((task, index) => {
+                <div className={`quest-scrolls-board${isBoardUpdating ? ' is-updating' : ''}`}>
+                  {activeTasks.map((task) => {
                     return (
                     <div 
                       key={task.id} 
-                      className="quest-scroll-container"
-                      style={{ 
-                        '--rotation': `${(index % 5 - 2) * 2}deg`,
-                        '--delay': `${index * 0.05}s` 
-                      }}
+                      className={`quest-scroll-container${animatedTaskIds.has(task.id) ? ' quest-scroll-animate' : ''}`}
+                      style={getTaskStyle(task)}
                     >
                       <div className="tack" />
                       <div 
