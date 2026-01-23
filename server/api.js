@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { connectMongo } from './db.js';
 import User from './models/User.js';
+import FriendRequest from './models/FriendRequest.js';
 
 const normalizeUserId = (userId) => (userId || '').trim().toLowerCase();
 
@@ -27,6 +28,9 @@ const sendJson = (res, status, payload) => {
 const notFound = (res) => sendJson(res, 404, { error: 'Not found' });
 
 export const registerApiMiddleware = (server, { mongoUri }) => {
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api.js:registerApiMiddleware',message:'API middleware registered',data:{mongoUriProvided:!!mongoUri,mongoUriPrefix:mongoUri?.substring(0,15)},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'MONGO'})}).catch(()=>{});
+  // #endregion
   server.middlewares.use(async (req, res, next) => {
     if (!req.url?.startsWith('/api/')) {
       next();
@@ -34,8 +38,17 @@ export const registerApiMiddleware = (server, { mongoUri }) => {
     }
 
     try {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api.js:before-connectMongo',message:'About to connect to MongoDB',data:{url:req.url,method:req.method,mongoUriAvailable:!!mongoUri},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'MONGO'})}).catch(()=>{});
+      // #endregion
       await connectMongo(mongoUri);
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api.js:after-connectMongo',message:'MongoDB connect returned',data:{url:req.url},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'MONGO'})}).catch(()=>{});
+      // #endregion
     } catch (error) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api.js:connectMongo-catch',message:'MongoDB connect error caught',data:{errorMessage:error?.message,errorStack:error?.stack?.substring(0,200)},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'MONGO'})}).catch(()=>{});
+      // #endregion
       sendJson(res, 500, { error: error?.message || 'MongoDB not connected' });
       return;
     }
@@ -68,6 +81,93 @@ export const registerApiMiddleware = (server, { mongoUri }) => {
         { new: true, upsert: true }
       );
       sendJson(res, 200, { user });
+      return;
+    }
+
+    // GET /api/users/check-username - Check if username is available
+    if (url?.startsWith('/api/users/check-username') && method === 'GET') {
+      const urlObj = new URL(url, `http://${req.headers.host}`);
+      const username = urlObj.searchParams.get('username');
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api.js:check-username-entry',message:'Check username entry',data:{username:username,usernameType:typeof username,usernameLength:username?.length},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'H1'})}).catch(()=>{});
+      // #endregion
+
+      if (!username) {
+        sendJson(res, 400, { error: 'username parameter required' });
+        return;
+      }
+
+      // Validate username format
+      if (username.length < 3 || username.length > 20) {
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api.js:check-username-length-fail',message:'Length validation failed',data:{username:username,length:username.length},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'H4'})}).catch(()=>{});
+        // #endregion
+        sendJson(res, 200, { available: false, error: 'Username must be 3-20 characters' });
+        return;
+      }
+
+      if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api.js:check-username-format-fail',message:'Format validation failed',data:{username:username,regex_test:!/^[a-zA-Z0-9_]+$/.test(username)},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'H4'})}).catch(()=>{});
+        // #endregion
+        sendJson(res, 200, { available: false, error: 'Username can only contain letters, numbers, and underscores' });
+        return;
+      }
+
+      // Check if username exists
+      const existing = await User.findOne({ username: username });
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api.js:check-username-db-result',message:'Database query result',data:{username:username,existingFound:!!existing,existingId:existing?._id,existingUsername:existing?.username,available:!existing},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'H2'})}).catch(()=>{});
+      // #endregion
+      sendJson(res, 200, { available: !existing });
+      return;
+    }
+
+    // POST /api/users/set-username - Set username for user
+    if (url === '/api/users/set-username' && method === 'POST') {
+      const { userId, username } = await readJsonBody(req);
+      const normalizedId = normalizeUserId(userId);
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api.js:set-username-entry',message:'Set username entry',data:{userId:userId?.substring(0,20),normalizedId:normalizedId?.substring(0,20),username:username},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'FIX'})}).catch(()=>{});
+      // #endregion
+
+      if (!normalizedId || !username) {
+        sendJson(res, 400, { error: 'userId and username are required' });
+        return;
+      }
+
+      // Validate username format
+      if (username.length < 3 || username.length > 20) {
+        sendJson(res, 400, { error: 'Username must be 3-20 characters' });
+        return;
+      }
+
+      if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+        sendJson(res, 400, { error: 'Username can only contain letters, numbers, and underscores' });
+        return;
+      }
+
+      // Check if username is already taken
+      const existing = await User.findOne({ username: username });
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api.js:set-username-existing-check',message:'Checked existing username',data:{username:username,existingFound:!!existing,existingUserId:existing?.userId?.substring(0,20),normalizedId:normalizedId?.substring(0,20),isSameUser:existing?.userId===normalizedId},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'FIX'})}).catch(()=>{});
+      // #endregion
+      if (existing && existing.userId !== normalizedId) {
+        sendJson(res, 400, { error: 'Username already taken' });
+        return;
+      }
+
+      // Update user with username (with upsert to create if doesn't exist)
+      const user = await User.findOneAndUpdate(
+        { userId: normalizedId },
+        { $set: { username: username }, $setOnInsert: { createdAt: new Date() } },
+        { new: true, upsert: true }
+      );
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api.js:set-username-success',message:'Username set successfully',data:{userId:user.userId?.substring(0,20),username:user.username,wasUpserted:!existing},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'FIX'})}).catch(()=>{});
+      // #endregion
+
+      sendJson(res, 200, { success: true, username: user.username });
       return;
     }
 
@@ -270,6 +370,291 @@ export const registerApiMiddleware = (server, { mongoUri }) => {
         quests: user.quests || [],
         sessions: user.sessions || [],
       });
+      return;
+    }
+
+    // ==================== FRIENDS API ====================
+
+    // POST /api/friend-requests - Send friend request
+    if (url === '/api/friend-requests' && method === 'POST') {
+      const { userId, friendUsername } = await readJsonBody(req);
+      const normalizedRequesterId = normalizeUserId(userId);
+
+      if (!normalizedRequesterId || !friendUsername) {
+        sendJson(res, 400, { error: 'userId and friendUsername are required' });
+        return;
+      }
+
+      // Find receiver by username field
+      const receiver = await User.findOne({ username: friendUsername.trim() });
+      if (!receiver) {
+        sendJson(res, 404, { error: 'User not found' });
+        return;
+      }
+
+      // Check if sending to self
+      if (normalizedRequesterId === receiver.userId) {
+        sendJson(res, 400, { error: 'Cannot send friend request to yourself' });
+        return;
+      }
+
+      // Check if request already exists (bidirectional)
+      const existingRequest = await FriendRequest.findOne({
+        $or: [
+          { requesterId: normalizedRequesterId, receiverId: receiver.userId },
+          { requesterId: receiver.userId, receiverId: normalizedRequesterId }
+        ]
+      });
+
+      if (existingRequest) {
+        if (existingRequest.status === 'pending') {
+          sendJson(res, 400, { error: 'Friend request already pending' });
+          return;
+        } else if (existingRequest.status === 'accepted') {
+          sendJson(res, 400, { error: 'Already friends' });
+          return;
+        }
+      }
+
+      // Create friend request
+      const friendRequest = await FriendRequest.create({
+        requesterId: normalizedRequesterId,
+        receiverId: receiver.userId,
+        status: 'pending',
+        createdAt: new Date()
+      });
+
+      sendJson(res, 201, {
+        success: true,
+        requestId: friendRequest._id,
+        message: 'Friend request sent'
+      });
+      return;
+    }
+
+    // GET /api/friend-requests/:userId - Get received friend requests
+    if (url?.startsWith('/api/friend-requests/') && method === 'GET') {
+      const userId = decodeURIComponent(url.replace('/api/friend-requests/', ''));
+      const normalizedId = normalizeUserId(userId);
+      if (!normalizedId) {
+        sendJson(res, 400, { error: 'userId required' });
+        return;
+      }
+
+      const requests = await FriendRequest.find({
+        receiverId: normalizedId,
+        status: 'pending'
+      }).sort({ createdAt: -1 });
+
+      // Get requester usernames
+      const requestsWithUsernames = await Promise.all(
+        requests.map(async (req) => {
+          const requester = await User.findOne({ userId: req.requesterId }).lean();
+          return {
+            id: req._id,
+            requesterId: req.requesterId,
+            requesterUsername: requester?.username || requester?.name || requester?.userId || req.requesterId,
+            receiverId: req.receiverId,
+            status: req.status,
+            createdAt: req.createdAt.toISOString()
+          };
+        })
+      );
+
+      sendJson(res, 200, { requests: requestsWithUsernames });
+      return;
+    }
+
+    // PATCH /api/friend-requests/:requestId - Accept/reject friend request
+    if (url?.startsWith('/api/friend-requests/') && method === 'PATCH') {
+      const requestId = decodeURIComponent(url.split('/').pop());
+      const { userId, action } = await readJsonBody(req);
+      const normalizedId = normalizeUserId(userId);
+
+      if (!normalizedId || !action) {
+        sendJson(res, 400, { error: 'userId and action are required' });
+        return;
+      }
+
+      if (action !== 'accept' && action !== 'reject') {
+        sendJson(res, 400, { error: 'Invalid action. Use "accept" or "reject"' });
+        return;
+      }
+
+      if (action === 'accept') {
+        const request = await FriendRequest.findOneAndUpdate(
+          {
+            _id: requestId,
+            receiverId: normalizedId,
+            status: 'pending'
+          },
+          { status: 'accepted' },
+          { new: true }
+        );
+
+        if (!request) {
+          sendJson(res, 404, { error: 'Friend request not found or already processed' });
+          return;
+        }
+
+        sendJson(res, 200, {
+          success: true,
+          message: 'Friend request accepted'
+        });
+      } else {
+        // Reject - delete the request
+        const result = await FriendRequest.deleteOne({
+          _id: requestId,
+          receiverId: normalizedId,
+          status: 'pending'
+        });
+
+        if (result.deletedCount === 0) {
+          sendJson(res, 404, { error: 'Friend request not found or already processed' });
+          return;
+        }
+
+        sendJson(res, 200, {
+          success: true,
+          message: 'Friend request rejected'
+        });
+      }
+      return;
+    }
+
+    // GET /api/friends/:userId - Get friends list
+    if (url?.startsWith('/api/friends/') && method === 'GET') {
+      const userId = decodeURIComponent(url.replace('/api/friends/', ''));
+      const normalizedId = normalizeUserId(userId);
+      if (!normalizedId) {
+        sendJson(res, 400, { error: 'userId required' });
+        return;
+      }
+
+      // Find all accepted friend requests where user is either requester or receiver
+      const requests = await FriendRequest.find({
+        $or: [
+          { requesterId: normalizedId, status: 'accepted' },
+          { receiverId: normalizedId, status: 'accepted' }
+        ]
+      });
+
+      // Map to friend list with usernames
+      const friends = await Promise.all(
+        requests.map(async (req) => {
+          const friendId = req.requesterId === normalizedId ? req.receiverId : req.requesterId;
+          const friendUser = await User.findOne({ userId: friendId }).lean();
+          
+          return {
+            id: friendId,
+            username: friendUser?.username || friendUser?.name || friendUser?.userId || friendId
+          };
+        })
+      );
+
+      sendJson(res, 200, { friends });
+      return;
+    }
+
+    // DELETE /api/friends - Remove friend
+    if (url === '/api/friends' && method === 'DELETE') {
+      const { userId, friendId } = await readJsonBody(req);
+      const normalizedUserId = normalizeUserId(userId);
+      const normalizedFriendId = normalizeUserId(friendId);
+
+      if (!normalizedUserId || !normalizedFriendId) {
+        sendJson(res, 400, { error: 'userId and friendId are required' });
+        return;
+      }
+
+      const result = await FriendRequest.deleteOne({
+        $or: [
+          { requesterId: normalizedUserId, receiverId: normalizedFriendId, status: 'accepted' },
+          { requesterId: normalizedFriendId, receiverId: normalizedUserId, status: 'accepted' }
+        ]
+      });
+
+      if (result.deletedCount === 0) {
+        sendJson(res, 404, { error: 'Friendship not found' });
+        return;
+      }
+
+      sendJson(res, 200, {
+        success: true,
+        message: 'Friend removed successfully'
+      });
+      return;
+    }
+
+    // GET /api/users/summary/:userId - Get user summary (quests, time worked, online status)
+    if (url?.startsWith('/api/users/summary/') && method === 'GET') {
+      const userId = decodeURIComponent(url.replace('/api/users/summary/', ''));
+      const normalizedId = normalizeUserId(userId);
+      if (!normalizedId) {
+        sendJson(res, 400, { error: 'userId required' });
+        return;
+      }
+
+      const user = await User.findOne({ userId: normalizedId }).lean();
+      if (!user) {
+        sendJson(res, 404, { error: 'User not found' });
+        return;
+      }
+
+      // Calculate total time worked in hours
+      const totalHours = Math.floor((user.totalTimeWorkedMs || 0) / (1000 * 60 * 60));
+      const totalMinutes = Math.floor(((user.totalTimeWorkedMs || 0) % (1000 * 60 * 60)) / (1000 * 60));
+
+      sendJson(res, 200, {
+        userId: user.userId,
+        username: user.username,
+        name: user.name,
+        picture: user.picture,
+        totalQuestsCompleted: user.totalQuestsCompleted || 0,
+        totalTimeWorkedMs: user.totalTimeWorkedMs || 0,
+        totalTimeWorkedFormatted: `${totalHours}h ${totalMinutes}m`,
+        isOnline: user.isOnline || false,
+        lastSeen: user.lastSeen
+      });
+      return;
+    }
+
+    // GET /api/users/search - Search users by username
+    if (url?.startsWith('/api/users/search') && method === 'GET') {
+      const urlObj = new URL(url, `http://${req.headers.host}`);
+      const query = urlObj.searchParams.get('q') || '';
+      const excludeUserId = normalizeUserId(urlObj.searchParams.get('excludeUserId') || '');
+
+      if (!query) {
+        sendJson(res, 200, { users: [] });
+        return;
+      }
+
+      const normalizedQuery = normalizeUserId(query);
+
+      // Search for users whose userId or name contains the query
+      const searchConditions = {
+        $or: [
+          { userId: { $regex: normalizedQuery, $options: 'i' } },
+          { name: { $regex: query, $options: 'i' } }
+        ]
+      };
+
+      if (excludeUserId) {
+        searchConditions.userId = { ...searchConditions.userId, $ne: excludeUserId };
+      }
+
+      const users = await User.find(searchConditions)
+        .select('userId name')
+        .limit(10)
+        .lean();
+
+      const userList = users.map(user => ({
+        id: user.userId,
+        username: user.name || user.userId
+      }));
+
+      sendJson(res, 200, { users: userList });
       return;
     }
 
