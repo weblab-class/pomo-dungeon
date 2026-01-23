@@ -53,6 +53,7 @@ export default async function handler(req, res) {
 
   sendJson(res, 200, {
     userId: user.userId,
+    username: user.username || null,
     totalSecondsOnSite: user.totalSecondsOnSite,
     totalHoursOnSite: user.totalSecondsOnSite / 3600,
     totalQuestsCompleted: user.totalQuestsCompleted,

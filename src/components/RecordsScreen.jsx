@@ -77,6 +77,7 @@ function RecordsScreen({ onBack }) {
 
   const activeUserLabel = googleUser?.email || 'Unknown user';
   const activeUserId = googleUser?.sub || googleUser?.email || '—';
+  const activeUsername = stats?.username || googleUser?.username || '—';
 
   return (
     <div className="screen records-screen fullscreen">
@@ -107,6 +108,7 @@ function RecordsScreen({ onBack }) {
                   <div className="records-user">
                     Signed in as <strong>{activeUserLabel}</strong>
                     <span className="records-user-id">ID: {activeUserId}</span>
+                    <span className="records-user-id">Username: {activeUsername === '—' ? '—' : `@${activeUsername}`}</span>
                   </div>
                   <div className="stats-grid">
                     <div className="stat-card">
