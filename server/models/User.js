@@ -24,6 +24,7 @@ const SessionSchema = new mongoose.Schema(
 
 const UserSchema = new mongoose.Schema({
   userId: { type: String, required: true, unique: true },
+  username: { type: String, unique: true, sparse: true },
   email: { type: String, default: '' },
   name: { type: String, default: '' },
   picture: { type: String, default: '' },
@@ -34,6 +35,8 @@ const UserSchema = new mongoose.Schema({
   tasks: { type: [mongoose.Schema.Types.Mixed], default: [] },
   quests: { type: [QuestSchema], default: [] },
   sessions: { type: [SessionSchema], default: [] },
+  isOnline: { type: Boolean, default: false },
+  lastSeen: { type: Date, default: Date.now },
 });
 
 const User = mongoose.models.User || mongoose.model('User', UserSchema);

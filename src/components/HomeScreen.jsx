@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { SCREENS, MODE, AVATARS, PRIORITY, getRandomDungeonRoom, getMonsterForPriority } from '../data/constants';
 import { useLocalStorage } from '../hooks/useLocalStorage';
+import { getJson, postJson } from '../utils/api';
 import AddTaskModal from './AddTaskModal';
 import PomodoroModal from './PomodoroModal';
 import homeScreenAudio from '../../audio/homescreen.mp3';
@@ -32,8 +33,24 @@ function HomeScreen({ gameState, onNavigate }) {
   const tokenClientRef = useRef(null);
   const [isAuthMenuOpen, setIsAuthMenuOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isFriendsOpen, setIsFriendsOpen] = useState(false);
+  const [friendRequests, setFriendRequests] = useState([]);
+  const [friends, setFriends] = useState([]);
+  const [friendUsername, setFriendUsername] = useState('');
+  const [showAddFriend, setShowAddFriend] = useState(false);
+  const [activeFriendOptions, setActiveFriendOptions] = useState(null);
+  const [friendActionLoading, setFriendActionLoading] = useState(false);
+  const [showUsernameModal, setShowUsernameModal] = useState(false);
+  const [usernameInput, setUsernameInput] = useState('');
+  const [usernameError, setUsernameError] = useState('');
+  const [isCheckingUsername, setIsCheckingUsername] = useState(false);
+  const [selectedFriend, setSelectedFriend] = useState(null);
+  const [friendSummary, setFriendSummary] = useState(null);
+  const [loadingFriendSummary, setLoadingFriendSummary] = useState(false);
+  const [onlineStatuses, setOnlineStatuses] = useState({});
   const authMenuRef = useRef(null);
   const settingsRef = useRef(null);
+  const friendsRef = useRef(null);
   const musicEnabledRef = useRef(musicEnabled);
   const musicVolumeRef = useRef(musicVolume);
   const dismissTutorial = () => {
@@ -42,6 +59,275 @@ function HomeScreen({ gameState, onNavigate }) {
     }
     setShowTutorial(false);
   };
+
+  // Normalize userId (email as lowercase)
+  const normalizeUserId = (userId) => (userId || '').trim().toLowerCase();
+
+  // Friends data fetching
+  const fetchFriendRequests = async () => {
+    if (!googleUser?.email) return;
+    try {
+      const userId = normalizeUserId(googleUser.email);
+      const data = await getJson(`/api/friend-requests/${encodeURIComponent(userId)}`);
+      setFriendRequests(data.requests || []);
+    } catch (error) {
+      console.error('Error fetching friend requests:', error);
+    }
+  };
+
+  const fetchFriends = async () => {
+    if (!googleUser?.email) return;
+    try {
+      const userId = normalizeUserId(googleUser.email);
+      const data = await getJson(`/api/friends/${encodeURIComponent(userId)}`);
+      setFriends(data.friends || []);
+    } catch (error) {
+      console.error('Error fetching friends:', error);
+    }
+  };
+
+  // Friends action handlers
+  const handleSendFriendRequest = async (e) => {
+    e.preventDefault();
+    if (!friendUsername.trim()) {
+      alert('Please enter a username');
+      return;
+    }
+
+    try {
+      setFriendActionLoading(true);
+      const userId = normalizeUserId(googleUser.email);
+      await postJson('/api/friend-requests', {
+        userId,
+        friendUsername: friendUsername.trim()
+      });
+      alert('Friend request sent!');
+      setFriendUsername('');
+      setShowAddFriend(false);
+      fetchFriendRequests();
+    } catch (error) {
+      console.error('Error sending friend request:', error);
+      alert(error.message || 'Failed to send friend request');
+    } finally {
+      setFriendActionLoading(false);
+    }
+  };
+
+  const handleAcceptRequest = async (requestId) => {
+    try {
+      setFriendActionLoading(true);
+      const userId = normalizeUserId(googleUser.email);
+      await fetch(`/api/friend-requests/${requestId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, action: 'accept' })
+      });
+      alert('Friend request accepted!');
+      fetchFriendRequests();
+      fetchFriends();
+    } catch (error) {
+      console.error('Error accepting request:', error);
+      alert('Failed to accept friend request');
+    } finally {
+      setFriendActionLoading(false);
+    }
+  };
+
+  const handleRejectRequest = async (requestId) => {
+    try {
+      setFriendActionLoading(true);
+      const userId = normalizeUserId(googleUser.email);
+      await fetch(`/api/friend-requests/${requestId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, action: 'reject' })
+      });
+      alert('Friend request rejected');
+      fetchFriendRequests();
+    } catch (error) {
+      console.error('Error rejecting request:', error);
+      alert('Failed to reject friend request');
+    } finally {
+      setFriendActionLoading(false);
+    }
+  };
+
+  const handleRemoveFriend = async (friendId, friendUsername) => {
+    if (!confirm(`Remove ${friendUsername} from friends?`)) {
+      return;
+    }
+
+    try {
+      setFriendActionLoading(true);
+      const userId = normalizeUserId(googleUser.email);
+      await fetch('/api/friends', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, friendId })
+      });
+      alert('Friend removed');
+      setActiveFriendOptions(null);
+      fetchFriends();
+    } catch (error) {
+      console.error('Error removing friend:', error);
+      alert('Failed to remove friend');
+    } finally {
+      setFriendActionLoading(false);
+    }
+  };
+
+  const handleFriendClick = async (friend) => {
+    if (loadingFriendSummary) return;
+    
+    try {
+      setLoadingFriendSummary(true);
+      setSelectedFriend(friend);
+      
+      const data = await getJson(`/api/users/summary/${encodeURIComponent(friend.id)}`);
+      setFriendSummary(data);
+    } catch (error) {
+      console.error('Error fetching friend summary:', error);
+      alert('Failed to load friend summary');
+      setSelectedFriend(null);
+    } finally {
+      setLoadingFriendSummary(false);
+    }
+  };
+
+  const closeFriendSummary = () => {
+    setSelectedFriend(null);
+    setFriendSummary(null);
+  };
+
+  // Fetch friends data when panel opens
+  useEffect(() => {
+    if (isFriendsOpen && googleUser) {
+      fetchFriendRequests();
+      fetchFriends();
+    }
+  }, [isFriendsOpen, googleUser]);
+
+  // Username validation and creation
+  const validateUsername = (username) => {
+    if (username.length < 3) return 'Username must be at least 3 characters';
+    if (username.length > 20) return 'Username must be 20 characters or less';
+    if (!/^[a-zA-Z0-9_]+$/.test(username)) return 'Username can only contain letters, numbers, and underscores';
+    return null;
+  };
+
+  const checkUsernameAvailable = async (username) => {
+    try {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HomeScreen.jsx:checkUsername-entry',message:'Frontend check username',data:{username:username,encodedUsername:encodeURIComponent(username)},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'H3'})}).catch(()=>{});
+      // #endregion
+      const data = await getJson(`/api/users/check-username?username=${encodeURIComponent(username)}`);
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HomeScreen.jsx:checkUsername-response',message:'API response received',data:{username:username,responseData:data,available:data.available,error:data.error},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'H3'})}).catch(()=>{});
+      // #endregion
+      return data.available;
+    } catch (error) {
+      console.error('Error checking username:', error);
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HomeScreen.jsx:checkUsername-error',message:'Check username error',data:{username:username,errorMessage:error.message},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'H5'})}).catch(()=>{});
+      // #endregion
+      return false;
+    }
+  };
+
+  const handleCreateUsername = async (e) => {
+    if (e) e.preventDefault();
+    
+    const trimmedUsername = usernameInput.trim();
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HomeScreen.jsx:handleCreate-entry',message:'Handle create username',data:{rawInput:usernameInput,trimmedUsername:trimmedUsername},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'H3'})}).catch(()=>{});
+    // #endregion
+    
+    // Validate format
+    const error = validateUsername(trimmedUsername);
+    if (error) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HomeScreen.jsx:handleCreate-validation-error',message:'Validation error',data:{trimmedUsername:trimmedUsername,validationError:error},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'H4'})}).catch(()=>{});
+      // #endregion
+      setUsernameError(error);
+      return;
+    }
+
+    try {
+      setIsCheckingUsername(true);
+      setUsernameError('');
+      
+      // Check availability
+      const available = await checkUsernameAvailable(trimmedUsername);
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HomeScreen.jsx:handleCreate-availability',message:'Availability check result',data:{trimmedUsername:trimmedUsername,available:available,willShowError:!available},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'H1'})}).catch(()=>{});
+      // #endregion
+      if (!available) {
+        setUsernameError('Username already taken. Please choose another.');
+        setIsCheckingUsername(false);
+        return;
+      }
+      
+      // Set username
+      const userId = normalizeUserId(googleUser.email);
+      await postJson('/api/users/set-username', {
+        userId,
+        username: trimmedUsername
+      });
+      
+      // Update local state
+      setGoogleUser({...googleUser, username: trimmedUsername});
+      setShowUsernameModal(false);
+      setUsernameInput('');
+      setUsernameError('');
+      alert('Username created successfully!');
+    } catch (error) {
+      console.error('Error creating username:', error);
+      setUsernameError(error.message || 'Failed to create username');
+    } finally {
+      setIsCheckingUsername(false);
+    }
+  };
+
+  // Show username modal if user doesn't have username
+  useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HomeScreen.jsx:username-modal-check',message:'Checking if username modal should show',data:{hasGoogleUser:!!googleUser,googleUserEmail:googleUser?.email,hasUsername:!!googleUser?.username,username:googleUser?.username,willShowModal:!!(googleUser && !googleUser.username)},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'USERNAME_PERSIST'})}).catch(()=>{});
+    // #endregion
+    if (googleUser && !googleUser.username) {
+      setShowUsernameModal(true);
+    }
+  }, [googleUser]);
+
+  // Initialize socket connection and fetch friends when user logs in
+  useEffect(() => {
+    if (!googleUser?.email) return;
+
+    // Dynamic import to avoid issues with SSR
+    import('../utils/socket.js').then(({ initSocket, disconnectSocket, onUserStatusChange }) => {
+      const userId = normalizeUserId(googleUser.email);
+      initSocket(userId);
+
+      // Listen for friend status changes
+      const unsubscribe = onUserStatusChange((data) => {
+        setOnlineStatuses(prev => ({
+          ...prev,
+          [data.userId]: {
+            isOnline: data.isOnline,
+            lastSeen: data.lastSeen
+          }
+        }));
+      });
+
+      // Fetch friends and friend requests
+      fetchFriends();
+      fetchFriendRequests();
+
+      return () => {
+        unsubscribe();
+        disconnectSocket();
+      };
+    });
+  }, [googleUser]);
 
   useEffect(() => {
     if (!googleUser) {
@@ -284,12 +570,45 @@ function HomeScreen({ gameState, onNavigate }) {
           if (!res.ok) throw new Error('Failed to fetch profile');
           const data = await res.json();
           setAuthError('');
-          setGoogleUser({
-            name: data.name,
-            email: data.email,
-            picture: data.picture,
-            sub: data.sub,
-          });
+          
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HomeScreen.jsx:oauth-callback',message:'Google OAuth success',data:{email:data.email,name:data.name},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'USERNAME_PERSIST'})}).catch(()=>{});
+          // #endregion
+          
+          // Upsert user in MongoDB and fetch existing username
+          try {
+            const userId = normalizeUserId(data.email);
+            const upsertRes = await postJson('/api/users/upsert', {
+              userId,
+              email: data.email,
+              name: data.name,
+              picture: data.picture
+            });
+            
+            // #region agent log
+            fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HomeScreen.jsx:upsert-success',message:'User upserted in MongoDB',data:{userId:userId?.substring(0,20),hasUsername:!!upsertRes?.user?.username,username:upsertRes?.user?.username},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'USERNAME_PERSIST'})}).catch(()=>{});
+            // #endregion
+            
+            setGoogleUser({
+              name: data.name,
+              email: data.email,
+              picture: data.picture,
+              sub: data.sub,
+              username: upsertRes?.user?.username || null, // Include username from DB
+            });
+          } catch (dbError) {
+            // #region agent log
+            fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HomeScreen.jsx:upsert-error',message:'Failed to upsert user',data:{error:dbError.message},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'USERNAME_PERSIST'})}).catch(()=>{});
+            // #endregion
+            console.error('Failed to upsert user in MongoDB:', dbError);
+            // Still set googleUser with OAuth data even if DB call fails
+            setGoogleUser({
+              name: data.name,
+              email: data.email,
+              picture: data.picture,
+              sub: data.sub,
+            });
+          }
         } catch (error) {
           setAuthError('Could not load Google profile.');
         }
@@ -365,6 +684,28 @@ function HomeScreen({ gameState, onNavigate }) {
       document.removeEventListener('keydown', handleEscape);
     };
   }, [isSettingsOpen]);
+
+  useEffect(() => {
+    if (!isFriendsOpen) return;
+
+    const handleOutsideClick = (event) => {
+      if (!friendsRef.current) return;
+      if (!friendsRef.current.contains(event.target)) {
+        setIsFriendsOpen(false);
+      }
+    };
+
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') setIsFriendsOpen(false);
+    };
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isFriendsOpen]);
 
   // Initialize rain
   useEffect(() => {
@@ -940,8 +1281,10 @@ function HomeScreen({ gameState, onNavigate }) {
                     onClick={() => {
                       setIsAuthMenuOpen((prev) => !prev);
                       setIsSettingsOpen(false);
+                      setIsFriendsOpen(false);
                     }}
                     aria-label="Open user menu"
+                    title={googleUser?.username ? `@${googleUser.username}` : googleUser?.name || 'User'}
                     type="button"
                   >
                     <img
@@ -958,7 +1301,22 @@ function HomeScreen({ gameState, onNavigate }) {
                         type="button"
                         onClick={() => {
                           setIsAuthMenuOpen(false);
+                          setIsFriendsOpen(true);
+                          setIsSettingsOpen(false);
+                        }}
+                      >
+                        Friends
+                        {friendRequests.length > 0 && (
+                          <span className="friend-badge">{friendRequests.length}</span>
+                        )}
+                      </button>
+                      <button
+                        className="auth-dropdown-item"
+                        type="button"
+                        onClick={() => {
+                          setIsAuthMenuOpen(false);
                           setIsSettingsOpen(true);
+                          setIsFriendsOpen(false);
                         }}
                       >
                         Settings
@@ -1037,6 +1395,145 @@ function HomeScreen({ gameState, onNavigate }) {
                           <span className="settings-value">
                             {Math.round(musicVolume * 100)}%
                           </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {isFriendsOpen && (
+                    <div className="friends-panel" ref={friendsRef} role="dialog" aria-label="Friends">
+                      <div className="friends-header">
+                        <span>Friends</span>
+                        <button
+                          className="friends-close"
+                          type="button"
+                          aria-label="Close friends"
+                          onClick={() => setIsFriendsOpen(false)}
+                        >
+                          ×
+                        </button>
+                      </div>
+                      <div className="friends-body">
+                        {/* Add Friend Section */}
+                        <div className="add-friend-section">
+                          <button
+                            className="btn-add-friend"
+                            type="button"
+                            onClick={() => setShowAddFriend(!showAddFriend)}
+                          >
+                            {showAddFriend ? 'Cancel' : '+ Add Friend'}
+                          </button>
+                          {showAddFriend && (
+                            <form onSubmit={handleSendFriendRequest} className="add-friend-form">
+                              <input
+                                type="text"
+                                placeholder="Enter username..."
+                                value={friendUsername}
+                                onChange={(e) => setFriendUsername(e.target.value)}
+                                className="friend-username-input"
+                                disabled={friendActionLoading}
+                              />
+                              <button
+                                type="submit"
+                                className="btn-send-request"
+                                disabled={friendActionLoading}
+                              >
+                                {friendActionLoading ? 'Sending...' : 'Send Request'}
+                              </button>
+                            </form>
+                          )}
+                        </div>
+
+                        {/* Friend Requests Section */}
+                        {friendRequests.length > 0 && (
+                          <div className="friend-requests-section">
+                            <h3 className="friends-section-title">
+                              Friend Requests
+                              <span className="count-badge">{friendRequests.length}</span>
+                            </h3>
+                            <div className="friend-requests-list">
+                              {friendRequests.map((request) => (
+                                <div key={request.id} className="friend-request-item">
+                                  <div className="friend-request-info">
+                                    <span className="friend-username">{request.requesterUsername}</span>
+                                  </div>
+                                  <div className="friend-request-actions">
+                                    <button
+                                      className="btn-accept"
+                                      type="button"
+                                      onClick={() => handleAcceptRequest(request.id)}
+                                      disabled={friendActionLoading}
+                                    >
+                                      Accept
+                                    </button>
+                                    <button
+                                      className="btn-reject"
+                                      type="button"
+                                      onClick={() => handleRejectRequest(request.id)}
+                                      disabled={friendActionLoading}
+                                    >
+                                      Reject
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Friends List Section */}
+                        <div className="friends-list-section">
+                          <h3 className="friends-section-title">
+                            Friends
+                            <span className="count-badge">{friends.length}</span>
+                          </h3>
+                          {friends.length > 0 ? (
+                            <div className="friends-list">
+                              {friends.map((friend) => {
+                                const status = onlineStatuses[friend.id];
+                                const isOnline = status?.isOnline || false;
+                                return (
+                                <div key={friend.id} className="friend-item">
+                                  <div 
+                                    className="friend-info"
+                                    onClick={() => handleFriendClick(friend)}
+                                    style={{ cursor: 'pointer' }}
+                                  >
+                                    <span className="friend-username">{friend.username}</span>
+                                    <span className={`online-indicator ${isOnline ? 'online' : 'offline'}`}>
+                                      {isOnline ? '🟢' : '⚫'}
+                                    </span>
+                                  </div>
+                                  <button
+                                    className="btn-friend-options"
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setActiveFriendOptions(
+                                        activeFriendOptions === friend.id ? null : friend.id
+                                      );
+                                    }}
+                                  >
+                                    ⋮
+                                  </button>
+                                  {activeFriendOptions === friend.id && (
+                                    <div className="friend-options-menu">
+                                      <button
+                                        className="btn-remove-friend"
+                                        type="button"
+                                        onClick={() => handleRemoveFriend(friend.id, friend.username)}
+                                        disabled={friendActionLoading}
+                                      >
+                                        {friendActionLoading ? 'Removing...' : 'Remove Friend'}
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                              })}
+                            </div>
+                          ) : (
+                            <p className="friends-empty">No friends yet. Add someone to start!</p>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1160,6 +1657,99 @@ function HomeScreen({ gameState, onNavigate }) {
             onNavigate(SCREENS.BATTLE, pomodoroTask);
           }}
         />
+
+        {/* Username Creation Modal */}
+        {showUsernameModal && (
+          <div className="username-modal-overlay">
+            <div className="username-modal">
+              <div className="username-modal-title">
+                Choose Your Username
+              </div>
+              <div className="username-modal-description">
+                Create a unique username so others can find and add you as a friend!
+              </div>
+              <form onSubmit={handleCreateUsername}>
+                <input
+                  type="text"
+                  className="username-input"
+                  placeholder="Enter username..."
+                  value={usernameInput}
+                  onChange={(e) => {
+                    setUsernameInput(e.target.value);
+                    setUsernameError('');
+                  }}
+                  disabled={isCheckingUsername}
+                  autoFocus
+                  maxLength={20}
+                />
+                {usernameError && (
+                  <div className="username-error">
+                    {usernameError}
+                  </div>
+                )}
+                <button
+                  type="submit"
+                  className="btn-create-username"
+                  disabled={isCheckingUsername || !usernameInput.trim()}
+                >
+                  {isCheckingUsername ? 'Creating...' : 'Create Username'}
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Friend Summary Modal */}
+        {selectedFriend && (
+          <div className="friend-summary-overlay" onClick={closeFriendSummary}>
+            <div className="friend-summary-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="friend-summary-header">
+                <h2 className="friend-summary-title">{selectedFriend.username}</h2>
+                <button
+                  className="friend-summary-close"
+                  type="button"
+                  onClick={closeFriendSummary}
+                  aria-label="Close"
+                >
+                  ×
+                </button>
+              </div>
+              
+              {loadingFriendSummary ? (
+                <div className="friend-summary-loading">Loading...</div>
+              ) : friendSummary ? (
+                <div className="friend-summary-content">
+                  <div className="friend-summary-status">
+                    <span className={`status-indicator ${friendSummary.isOnline ? 'online' : 'offline'}`}>
+                      {friendSummary.isOnline ? '🟢 Online' : '⚫ Offline'}
+                    </span>
+                    {!friendSummary.isOnline && friendSummary.lastSeen && (
+                      <span className="last-seen">
+                        Last seen: {new Date(friendSummary.lastSeen).toLocaleString()}
+                      </span>
+                    )}
+                  </div>
+                  
+                  <div className="friend-summary-stats">
+                    <div className="summary-stat-card">
+                      <div className="stat-icon">⚔️</div>
+                      <div className="stat-value">{friendSummary.totalQuestsCompleted || 0}</div>
+                      <div className="stat-label">Quests Completed</div>
+                    </div>
+                    
+                    <div className="summary-stat-card">
+                      <div className="stat-icon">⏱️</div>
+                      <div className="stat-value">{friendSummary.totalTimeWorkedFormatted || '0h 0m'}</div>
+                      <div className="stat-label">Time Worked</div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="friend-summary-error">Failed to load friend data</div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
