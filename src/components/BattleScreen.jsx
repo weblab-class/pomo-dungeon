@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { AVATARS, MONSTERS, COIN_REWARDS, DUNGEON_ROOMS } from '../data/constants';
+import { useLocalStorage } from '../hooks/useLocalStorage';
 
 function BattleScreen({ task, gameState, onExit, onComplete }) {
   // Initialize elapsed from task's saved timeSpent (for resume functionality)
@@ -25,6 +26,16 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
   const [monsterWalkSprite, setMonsterWalkSprite] = useState(null);
   const [monsterShieldSprite, setMonsterShieldSprite] = useState(null);
   const [phase, setPhase] = useState('study');
+  const [musicEnabled, setMusicEnabled] = useLocalStorage('pomoDungeon_musicEnabled', true);
+  const [musicVolume] = useLocalStorage('pomoDungeon_musicVolume', 0.35);
+  const [showPlaylist, setShowPlaylist] = useState(false);
+  const musicEnabledRef = useRef(musicEnabled);
+  const musicVolumeRef = useRef(musicVolume);
+  const pausedRef = useRef(paused);
+  const userInteractedRef = useRef(false);
+  const iframeRef = useRef(null);
+  const widgetRef = useRef(null);
+  const soundCloudReadyRef = useRef(false);
   
   const startTimeRef = useRef(performance.now() - (task?.timeSpent || 0));
   const pausedTimeRef = useRef(0);
@@ -61,6 +72,146 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
   
   // Get dungeon room from task or use first one as default
   const dungeonRoom = task?.dungeonRoom || DUNGEON_ROOMS[0];
+  const soundCloudPlaylistUrl = 'https://on.soundcloud.com/2acGXci60bIST51lyF';
+  const buildWidgetUrl = (url) =>
+    `https://w.soundcloud.com/player/?url=${encodeURIComponent(
+      url
+    )}&auto_play=false&show_comments=false&show_user=false&show_reposts=false&visual=false`;
+  const [soundCloudWidgetSrc, setSoundCloudWidgetSrc] = useState(() =>
+    buildWidgetUrl(soundCloudPlaylistUrl)
+  );
+
+  useEffect(() => {
+    musicEnabledRef.current = musicEnabled;
+  }, [musicEnabled]);
+
+  useEffect(() => {
+    musicVolumeRef.current = musicVolume;
+  }, [musicVolume]);
+
+  useEffect(() => {
+    pausedRef.current = paused;
+  }, [paused]);
+
+  useEffect(() => {
+    const handleUserInteract = () => {
+      userInteractedRef.current = true;
+      const widget = widgetRef.current;
+      if (!widget || !soundCloudReadyRef.current) return;
+      if (musicEnabledRef.current && !pausedRef.current) {
+        widget.play();
+      }
+    };
+
+    window.addEventListener('pointerdown', handleUserInteract, { once: true });
+    window.addEventListener('keydown', handleUserInteract, { once: true });
+    return () => {
+      window.removeEventListener('pointerdown', handleUserInteract);
+      window.removeEventListener('keydown', handleUserInteract);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const resolveWidgetSrc = async () => {
+      try {
+        const res = await fetch(
+          `https://soundcloud.com/oembed?format=json&url=${encodeURIComponent(
+            soundCloudPlaylistUrl
+          )}`
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data?.html || cancelled) return;
+        const doc = new DOMParser().parseFromString(data.html, 'text/html');
+        const iframe = doc.querySelector('iframe');
+        const src = iframe?.getAttribute('src');
+        if (src && !cancelled) {
+          setSoundCloudWidgetSrc(src);
+        }
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error(error);
+      }
+    };
+
+    resolveWidgetSrc();
+    return () => {
+      cancelled = true;
+    };
+  }, [soundCloudPlaylistUrl]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const ensureScript = () =>
+      new Promise((resolve, reject) => {
+        if (window.SC?.Widget) {
+          resolve();
+          return;
+        }
+        const existing = document.querySelector('script[data-soundcloud-widget]');
+        if (existing) {
+          existing.addEventListener('load', () => resolve());
+          existing.addEventListener('error', () => reject(new Error('SoundCloud SDK failed')));
+          return;
+        }
+        const script = document.createElement('script');
+        script.src = 'https://w.soundcloud.com/player/api.js';
+        script.async = true;
+        script.dataset.soundcloudWidget = 'true';
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error('SoundCloud SDK failed'));
+        document.body.appendChild(script);
+      });
+
+    const initWidget = async () => {
+      try {
+        await ensureScript();
+        if (cancelled) return;
+        if (!iframeRef.current) return;
+        const widget = window.SC.Widget(iframeRef.current);
+        widgetRef.current = widget;
+        widget.bind(window.SC.Widget.Events.READY, () => {
+          if (cancelled) return;
+          soundCloudReadyRef.current = true;
+          widget.setVolume(Math.round(Math.max(0, Math.min(1, musicVolumeRef.current)) * 100));
+          if (musicEnabledRef.current && !pausedRef.current && userInteractedRef.current) {
+            widget.play();
+          }
+        });
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error(error);
+      }
+    };
+
+    initWidget();
+
+    return () => {
+      cancelled = true;
+      if (widgetRef.current && soundCloudReadyRef.current) {
+        widgetRef.current.pause();
+      }
+      widgetRef.current = null;
+      soundCloudReadyRef.current = false;
+    };
+  }, [soundCloudWidgetSrc]);
+
+  useEffect(() => {
+    const widget = widgetRef.current;
+    if (!widget || !soundCloudReadyRef.current) return;
+    widget.setVolume(Math.round(Math.max(0, Math.min(1, musicVolume)) * 100));
+  }, [musicVolume]);
+
+  useEffect(() => {
+    const widget = widgetRef.current;
+    if (!widget || !soundCloudReadyRef.current) return;
+    if (musicEnabled && !paused) {
+      widget.play();
+    } else {
+      widget.pause();
+    }
+  }, [musicEnabled, paused]);
 
   useEffect(() => {
     const nextElapsed = task?.timeSpent || 0;
@@ -120,11 +271,12 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
   }, []);
 
   useEffect(() => {
+    if (!isPomodoro) return;
     setElapsed(0);
     startTimeRef.current = performance.now();
     pausedTimeRef.current = 0;
     setPaused(false);
-  }, [phase]);
+  }, [phase, isPomodoro]);
 
   const loadImage = (src, setter) => {
     const img = new Image();
@@ -544,6 +696,14 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
     setPaused(!paused);
   };
 
+  const handleVictoryContinue = () => {
+    if (task?.id && !task?.isPomodoro) {
+      // Ensure the completed quest is removed from the quest board.
+      gameState.deleteTask(task.id);
+    }
+    onComplete();
+  };
+
   const formatTime = (ms) => {
     const total = Math.max(0, Math.floor(ms / 1000));
     const m = Math.floor(total / 60);
@@ -565,6 +725,13 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
     setMonsterDead(false);
     setFinishPrompt(false);
     setFinisherActive(true);
+  };
+  const handleToggleMusic = () => {
+    setMusicEnabled(!musicEnabled);
+  };
+
+  const handleTogglePlaylist = () => {
+    setShowPlaylist((prev) => !prev);
   };
   return (
     <div className="screen battle-screen fullscreen">
@@ -667,6 +834,55 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
           >
             ✓
           </button>
+          <button
+            className="btn btn-flee btn-icon"
+            type="button"
+            onClick={handleToggleMusic}
+            aria-label={`Music ${musicEnabled ? 'on' : 'off'}`}
+            title={`Music ${musicEnabled ? 'On' : 'Off'}`}
+          >
+            {musicEnabled ? '🔊' : '🔇'}
+          </button>
+          <button
+            className="btn btn-flee"
+            type="button"
+            onClick={handleTogglePlaylist}
+            aria-label={showPlaylist ? 'Hide playlist' : 'Choose track'}
+            title={showPlaylist ? 'Hide playlist' : 'Choose track'}
+          >
+            {showPlaylist ? 'Hide Playlist' : 'Choose Track'}
+          </button>
+        </div>
+
+        <div
+          className={`soundcloud-player${showPlaylist ? ' is-open' : ''}`}
+          role="dialog"
+          aria-label="Battle playlist"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setShowPlaylist(false);
+            }
+          }}
+        >
+          <div className="soundcloud-player-card">
+            <div className="soundcloud-player-header">
+              <span>Choose a track</span>
+              <button
+                className="soundcloud-player-close"
+                type="button"
+                onClick={() => setShowPlaylist(false)}
+                aria-label="Close playlist"
+              >
+                ×
+              </button>
+            </div>
+            <iframe
+              ref={iframeRef}
+              title="SoundCloud battle playlist"
+              allow="autoplay; clipboard-write; encrypted-media"
+              src={soundCloudWidgetSrc}
+            />
+          </div>
         </div>
 
         {/* Victory Overlay */}
@@ -679,7 +895,7 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
                 <span className="coin-icon">🪙</span>
                 <span>+{coinsEarned}</span>
               </div>
-              <button className="btn btn-primary" onClick={onComplete}>
+              <button className="btn btn-primary" onClick={handleVictoryContinue}>
                 Continue
               </button>
             </div>
