@@ -290,8 +290,57 @@ body {
   flex: 1;
 }
 
+.navbar-center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  justify-content: center;
+  pointer-events: none;
+}
+
 .navbar-right {
   justify-content: flex-end;
+}
+
+.navbar-title {
+  position: relative;
+  display: inline-block;
+  padding: 4px 18px 8px;
+  color: #f4e4bc;
+  font-size: 3.5rem;
+  font-weight: 900;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  background: linear-gradient(180deg, #fff8e6 0%, #ffd99a 45%, #c98a2f 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow:
+    0 0 0 2px rgba(44, 26, 12, 0.85),
+    0 2px 0 rgba(68, 42, 20, 0.85),
+    0 2px 6px rgba(0, 0, 0, 0.6);
+}
+
+.navbar-title::before,
+.navbar-title::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 48px;
+  height: 2px;
+  background: linear-gradient(90deg, rgba(244, 228, 188, 0), rgba(244, 228, 188, 0.95));
+  transform: translateY(-50%);
+}
+
+.navbar-title::before {
+  right: 100%;
+  margin-right: 12px;
+}
+
+.navbar-title::after {
+  left: 100%;
+  margin-left: 12px;
 }
 
 .medieval-navbar .btn-medieval {
@@ -335,6 +384,37 @@ body {
 .streak-count {
   min-width: 12px;
   text-align: right;
+}
+
+.streak-info-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid #8b6914;
+  background: rgba(20, 12, 6, 0.75);
+  color: #f4e4bc;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  font-family: 'MedievalSharp', cursive;
+  line-height: 1;
+}
+
+.streak-info-btn:hover {
+  background: rgba(30, 20, 10, 0.85);
+}
+
+.streak-info-btn:focus-visible {
+  outline: 2px solid #f4e4bc;
+  outline-offset: 2px;
+}
+
+.streak-info-icon {
+  font-size: 0.95rem;
+  font-weight: 700;
+  transform: translateY(-1px);
 }
 
 .auth-panel.navbar-auth .auth-user {
@@ -605,6 +685,7 @@ body {
   }
 
   .navbar-left,
+  .navbar-center,
   .navbar-right {
     justify-content: center;
   }
@@ -2468,9 +2549,78 @@ body {
 
 /* ======================= RESPONSIVE ======================= */
 @media (max-width: 768px) {
+  .battle-screen.fullscreen {
+    height: 100dvh;
+  }
+
+  .battle-arena {
+    height: 100dvh;
+    min-height: 100dvh;
+  }
+
+  .battle-arena.finisher-zoom {
+    transform: scale(1.05);
+  }
+
+  .battle-header {
+    padding: 14px 16px;
+  }
+
+  .battle-health-bars {
+    top: 16px;
+    padding: 0 14px;
+    gap: 10px;
+  }
+
+  .health-bar-container.player-bar,
+  .health-bar-container.monster-bar {
+    width: 140px;
+    padding: 4px;
+  }
+
+  .battle-timer {
+    padding: 6px 16px;
+    border-width: 2px;
+  }
+
+  .battle-timer span {
+    font-size: 1.25rem;
+    letter-spacing: 1px;
+  }
+
   .battle-stage {
     flex-direction: column;
-    gap: 30px;
+    gap: 16px;
+    padding: 20px 16px 90px;
+  }
+
+  .combatant {
+    min-height: 200px;
+  }
+
+  .sprite-container {
+    width: 220px;
+    height: 220px;
+  }
+
+  .battle-sprite {
+    --sprite-size: min(240px, 70vw) !important;
+  }
+
+  .btn-flee {
+    left: 12px;
+    bottom: 12px;
+    padding: 8px 12px;
+  }
+
+  .battle-controls {
+    bottom: 12px;
+  }
+
+  .finisher-prompt {
+    top: 70px;
+    padding: 8px 14px;
+    font-size: 0.9rem;
   }
   
   .stats-grid {

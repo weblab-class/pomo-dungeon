@@ -4,6 +4,7 @@ import { AVATARS, MONSTERS, COIN_REWARDS, DUNGEON_ROOMS } from '../data/constant
 function BattleScreen({ task, gameState, onExit, onComplete }) {
   // Initialize elapsed from task's saved timeSpent (for resume functionality)
   const [elapsed, setElapsed] = useState(task?.timeSpent || 0);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 768);
   const [paused, setPaused] = useState(false);
   const [questComplete, setQuestComplete] = useState(false);
   const [showVictory, setShowVictory] = useState(false);
@@ -48,18 +49,35 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
     (phase === 'break' ? breakMinutes : studyMinutes) * 60 * 1000;
   const avatar = AVATARS[gameState.player.currentAvatar] || AVATARS.knight_1;
   const monster = MONSTERS[task?.monsterType] || MONSTERS.goblin;
-  const PLAYER_SIZE = 450;
-  const MONSTER_SIZE = 550;
+  const PLAYER_SIZE = isMobile ? 260 : 450;
+  const MONSTER_SIZE = isMobile ? 320 : 550;
   const ATTACK_COOLDOWN_MS = 5000;
   const FRAME_DURATION_MS = 120;
   const ATTACK_DELAY_MS = 200;
-  const RUN_OFFSET_PX = 500;
-  const MONSTER_RUN_OFFSET_PX = 450;
+  const RUN_OFFSET_PX = isMobile ? 220 : 500;
+  const MONSTER_RUN_OFFSET_PX = isMobile ? 200 : 450;
   const PLAYER_Y_OFFSET = 0;
-  const MONSTER_Y_OFFSET = 175;
+  const MONSTER_Y_OFFSET = isMobile ? 110 : 175;
   
   // Get dungeon room from task or use first one as default
   const dungeonRoom = task?.dungeonRoom || DUNGEON_ROOMS[0];
+
+  useEffect(() => {
+    const nextElapsed = task?.timeSpent || 0;
+    setElapsed(nextElapsed);
+    setPaused(false);
+    setQuestComplete(false);
+    setShowVictory(false);
+    setFinishPrompt(false);
+    setFinisherActive(false);
+    setMonsterDead(false);
+    setCoinsEarned(0);
+    setPhase('study');
+    startTimeRef.current = performance.now() - nextElapsed;
+    pausedTimeRef.current = 0;
+    finisherHitRef.current = false;
+    finisherDoneRef.current = false;
+  }, [task?.id, task?.timeSpent]);
 
   // Handle flee - save progress and exit
   const handleFlee = () => {
@@ -92,6 +110,14 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
 
     return () => clearInterval(interval);
   }, [questComplete, paused, duration, isPomodoro, phase]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
     setElapsed(0);
@@ -480,6 +506,11 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
     monsterHitSprite,
     monsterWalkSprite,
     monsterShieldSprite,
+    PLAYER_SIZE,
+    MONSTER_SIZE,
+    RUN_OFFSET_PX,
+    MONSTER_RUN_OFFSET_PX,
+    MONSTER_Y_OFFSET,
     paused,
     questComplete,
     finisherActive,
