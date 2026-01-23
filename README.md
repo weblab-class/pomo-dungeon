@@ -46,3 +46,8 @@ Note: Google sign-in requires HTTPS for non-localhost origins.
 - `src/` - React UI and game logic
 - `server/` - Vite middleware API (MongoDB + user/task tracking)
 - `assets/` + `public/assets/` - sprite sheets and art assets
+
+## Credits
+Luiz Melo on itch.io for providing free rpg elements
+Adobe Creative Cloud for providing backdrops
+Medieval Lofi for providing lofi music

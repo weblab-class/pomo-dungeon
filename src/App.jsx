@@ -7,6 +7,7 @@ import TaskOverview from './components/TaskOverview';
 import BattleScreen from './components/BattleScreen';
 import CollectionsScreen from './components/CollectionsScreen';
 import RecordsScreen from './components/RecordsScreen';
+import AvatarCustomizationScreen from './components/AvatarCustomizationScreen';
 import { getApiBaseUrl, postJson } from './utils/api';
 import './App.css';
 
@@ -16,6 +17,7 @@ const SCREEN_HASH = {
   [SCREENS.BATTLE]: '#/battle',
   [SCREENS.COLLECTIONS]: '#/collections',
   [SCREENS.RECORDS]: '#/records',
+  [SCREENS.CUSTOMIZE]: '#/customize',
 };
 
 const getScreenFromHash = (hash) => {
@@ -29,6 +31,8 @@ const getScreenFromHash = (hash) => {
       return SCREENS.COLLECTIONS;
     case 'records':
       return SCREENS.RECORDS;
+    case 'customize':
+      return SCREENS.CUSTOMIZE;
     case 'home':
     default:
       return SCREENS.HOME;
@@ -258,6 +262,13 @@ function App() {
       case SCREENS.RECORDS:
         return (
           <RecordsScreen
+            onBack={() => navigateTo(SCREENS.HOME)}
+          />
+        );
+      case SCREENS.CUSTOMIZE:
+        return (
+          <AvatarCustomizationScreen
+            gameState={gameState}
             onBack={() => navigateTo(SCREENS.HOME)}
           />
         );
