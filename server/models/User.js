@@ -24,7 +24,7 @@ const SessionSchema = new mongoose.Schema(
 
 const UserSchema = new mongoose.Schema({
   userId: { type: String, required: true, unique: true },
-  username: { type: String, unique: true, sparse: true },
+  username: { type: String, unique: true, sparse: true, trim: true, lowercase: true, default: null },
   email: { type: String, default: '' },
   name: { type: String, default: '' },
   picture: { type: String, default: '' },

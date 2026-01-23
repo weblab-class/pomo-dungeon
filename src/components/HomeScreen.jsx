@@ -234,13 +234,17 @@ function HomeScreen({ gameState, onNavigate }) {
       // #region agent log
       fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HomeScreen.jsx:checkUsername-response',message:'API response received',data:{username:username,responseData:data,available:data.available,error:data.error},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'H3'})}).catch(()=>{});
       // #endregion
+      if (typeof data?.available !== 'boolean') {
+        const apiError = data?.error ? `: ${data.error}` : '';
+        throw new Error(`Username check failed${apiError}`);
+      }
       return data.available;
     } catch (error) {
       console.error('Error checking username:', error);
       // #region agent log
       fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HomeScreen.jsx:checkUsername-error',message:'Check username error',data:{username:username,errorMessage:error.message},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'H5'})}).catch(()=>{});
       // #endregion
-      return false;
+      throw error;
     }
   };
 
@@ -267,7 +271,14 @@ function HomeScreen({ gameState, onNavigate }) {
       setUsernameError('');
       
       // Check availability
-      const available = await checkUsernameAvailable(trimmedUsername);
+      let available = false;
+      try {
+        available = await checkUsernameAvailable(trimmedUsername);
+      } catch (checkError) {
+        setUsernameError(checkError?.message || 'Could not check username. Is the server running?');
+        setIsCheckingUsername(false);
+        return;
+      }
       // #region agent log
       fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HomeScreen.jsx:handleCreate-availability',message:'Availability check result',data:{trimmedUsername:trimmedUsername,available:available,willShowError:!available},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'H1'})}).catch(()=>{});
       // #endregion

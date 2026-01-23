@@ -4,6 +4,16 @@ import User from './models/User.js';
 import FriendRequest from './models/FriendRequest.js';
 
 const normalizeUserId = (userId) => (userId || '').trim().toLowerCase();
+const normalizeUsername = (username) => (username || '').trim().toLowerCase();
+const validateUsername = (username) => {
+  if (!username) return 'Username required';
+  if (username.length < 3) return 'Username must be at least 3 characters';
+  if (username.length > 20) return 'Username must be 20 characters or less';
+  if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+    return 'Username can only contain letters, numbers, and underscores';
+  }
+  return null;
+};
 
 const readJsonBody = async (req) => {
   const chunks = [];
@@ -79,6 +89,50 @@ export const registerApiMiddleware = (server, { mongoUri }) => {
         { userId: normalizedId },
         { $set: update, $setOnInsert: { createdAt: new Date() } },
         { new: true, upsert: true }
+      );
+      sendJson(res, 200, { user });
+      return;
+    }
+
+    if (url?.startsWith('/api/users/check-username') && method === 'GET') {
+      const requestUrl = new URL(url, 'http://localhost');
+      const rawUsername = requestUrl.searchParams.get('username');
+      const normalizedUsername = normalizeUsername(rawUsername);
+      const validationError = validateUsername(normalizedUsername);
+      if (validationError) {
+        sendJson(res, 400, { available: false, error: validationError });
+        return;
+      }
+
+      const existing = await User.findOne({ username: normalizedUsername }).lean();
+      sendJson(res, 200, { available: !existing });
+      return;
+    }
+
+    if (url === '/api/users/set-username' && method === 'POST') {
+      const { userId, username } = await readJsonBody(req);
+      const normalizedId = normalizeUserId(userId);
+      if (!normalizedId) {
+        sendJson(res, 400, { error: 'userId required' });
+        return;
+      }
+      const normalizedUsername = normalizeUsername(username);
+      const validationError = validateUsername(normalizedUsername);
+      if (validationError) {
+        sendJson(res, 400, { error: validationError });
+        return;
+      }
+
+      const existing = await User.findOne({ username: normalizedUsername }).lean();
+      if (existing && existing.userId !== normalizedId) {
+        sendJson(res, 409, { error: 'Username already taken' });
+        return;
+      }
+
+      const user = await User.findOneAndUpdate(
+        { userId: normalizedId },
+        { $set: { username: normalizedUsername } },
+        { new: true, upsert: true, setDefaultsOnInsert: true }
       );
       sendJson(res, 200, { user });
       return;
