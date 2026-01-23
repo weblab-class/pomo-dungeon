@@ -17,6 +17,11 @@ function HomeScreen({ gameState, onNavigate }) {
   const [mode, setMode] = useState(MODE.TASKS);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isPomodoroModalOpen, setIsPomodoroModalOpen] = useState(false);
+  const [pomodoroDefaults, setPomodoroDefaults] = useState({
+    studyMinutes: 25,
+    breakMinutes: 5,
+  });
+  const [pomodoroModalPurpose, setPomodoroModalPurpose] = useState('start');
   const [avatarSprite, setAvatarSprite] = useState(null);
   const [googleUser, setGoogleUser] = useLocalStorage('pomoDungeon_googleUser', null);
   const [streakDays] = useLocalStorage('pomoDungeon_streakDays', 0);
@@ -73,11 +78,11 @@ function HomeScreen({ gameState, onNavigate }) {
     audioRef.current = audio;
 
     const attemptPlay = () => {
-      if (!audioRef.current || !musicEnabledRef.current) return;
+      if (!audioRef.current || !musicEnabledRef.current || showTutorial) return;
       audioRef.current.play().catch(() => {});
     };
 
-    if (musicEnabledRef.current) attemptPlay();
+    if (musicEnabledRef.current && !showTutorial) attemptPlay();
     window.addEventListener('pointerdown', attemptPlay, { once: true });
     window.addEventListener('keydown', attemptPlay, { once: true });
 
@@ -92,7 +97,7 @@ function HomeScreen({ gameState, onNavigate }) {
       audio.currentTime = 0;
       audioRef.current = null;
     };
-  }, []);
+  }, [showTutorial]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -155,13 +160,18 @@ function HomeScreen({ gameState, onNavigate }) {
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
+    if (showTutorial) {
+      audio.pause();
+      audio.currentTime = 0;
+      return;
+    }
     audio.volume = Math.max(0, Math.min(1, musicVolume));
     if (musicEnabled) {
       audio.play().catch(() => {});
     } else {
       audio.pause();
     }
-  }, [musicEnabled, musicVolume]);
+  }, [musicEnabled, musicVolume, showTutorial]);
   const getGoogleAuthHint = () => {
     const { protocol, hostname } = window.location;
     const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
@@ -1022,6 +1032,7 @@ function HomeScreen({ gameState, onNavigate }) {
     // Open dungeon click -> Tasks (blue moon) or Pomodoro (red moon)
     if (gate.openT >= 0.5 && mx >= d.x && mx <= d.x + d.w && my >= d.y && my <= d.y + d.h) {
       if (mode === MODE.STOPWATCH) {
+        setPomodoroModalPurpose('start');
         setIsPomodoroModalOpen(true);
       } else {
       onNavigate(SCREENS.TASKS);
@@ -1045,16 +1056,29 @@ function HomeScreen({ gameState, onNavigate }) {
     >
       <div className="home-navbar">
         <div className="medieval-navbar">
-            <div className="navbar-section navbar-left">
+          <div className="navbar-section navbar-left">
             {mode === MODE.TASKS && (
-                <button
-                  className={`btn-medieval btn-auth navbar-btn${
-                    showTutorial && tutorialStep === 3 ? ' tutorial-highlight' : ''
-                  }`}
-                  onClick={() => setIsModalOpen(true)}
-                >
-                  + Add Quest
-                </button>
+              <button
+                className={`btn-medieval btn-auth navbar-btn${
+                  showTutorial && tutorialStep === 3 ? ' tutorial-highlight' : ''
+                }`}
+                onClick={() => setIsModalOpen(true)}
+              >
+                + Add Quest
+              </button>
+            )}
+            {mode === MODE.STOPWATCH && (
+              <button
+                className="btn-medieval btn-auth navbar-btn"
+                type="button"
+                onClick={() => {
+                  setPomodoroModalPurpose('settings');
+                  setIsPomodoroModalOpen(true);
+                }}
+                aria-label={`Pomodoro settings. Study ${pomodoroDefaults.studyMinutes} minutes, break ${pomodoroDefaults.breakMinutes} minutes.`}
+              >
+                Pomodoro {pomodoroDefaults.studyMinutes}/{pomodoroDefaults.breakMinutes}
+              </button>
             )}
           </div>
           <div className="navbar-section navbar-center" aria-label="POMODON">
@@ -1297,7 +1321,15 @@ function HomeScreen({ gameState, onNavigate }) {
         <PomodoroModal
           isOpen={isPomodoroModalOpen}
           onClose={() => setIsPomodoroModalOpen(false)}
+          studyMinutes={pomodoroDefaults.studyMinutes}
+          breakMinutes={pomodoroDefaults.breakMinutes}
+          submitLabel={pomodoroModalPurpose === 'settings' ? 'Save Settings' : 'Accept Quest'}
           onSubmit={({ studyMinutes, breakMinutes }) => {
+            setPomodoroDefaults({ studyMinutes, breakMinutes });
+            if (pomodoroModalPurpose === 'settings') {
+              setIsPomodoroModalOpen(false);
+              return;
+            }
             const pomodoroTask = {
               id: `pomo-${Date.now()}`,
               name: 'Red Moon Pomodoro',

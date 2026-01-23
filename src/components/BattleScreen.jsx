@@ -120,11 +120,12 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
   }, []);
 
   useEffect(() => {
+    if (!isPomodoro) return;
     setElapsed(0);
     startTimeRef.current = performance.now();
     pausedTimeRef.current = 0;
     setPaused(false);
-  }, [phase]);
+  }, [phase, isPomodoro]);
 
   const loadImage = (src, setter) => {
     const img = new Image();
