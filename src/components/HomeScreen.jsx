@@ -1017,9 +1017,9 @@ function HomeScreen({ gameState, onNavigate }) {
       }
     }
 
-    // Avatar click -> Collections
+    // Avatar click -> Customize knight
     if (mx >= avatar.x && mx <= avatar.x + avatar.w && my >= avatar.y && my <= avatar.y + avatar.h) {
-      onNavigate(SCREENS.COLLECTIONS);
+      onNavigate(SCREENS.CUSTOMIZE);
       return;
     }
 

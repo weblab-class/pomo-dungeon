@@ -1594,6 +1594,14 @@ body {
 }
 
 /* ======================= COLLECTIONS SCREEN ======================= */
+.customization-screen {
+  height: 100vh;
+  background: radial-gradient(1200px 600px at 50% 0%, #152047, var(--bg));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .collections-screen {
   height: 100vh;
   background: radial-gradient(1200px 600px at 50% 0%, #152047, var(--bg));
@@ -1678,6 +1686,16 @@ body {
   background: rgba(20, 12, 6, 0.6);
   border: 1px solid rgba(139, 105, 20, 0.6);
   color: #f4e4bc;
+}
+
+.avatar-feedback {
+  margin-top: 10px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: rgba(20, 12, 6, 0.7);
+  border: 1px solid rgba(239, 68, 68, 0.6);
+  color: #ffd0d0;
+  font-family: 'MedievalSharp', cursive;
 }
 
 .collections-content {
