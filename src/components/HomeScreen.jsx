@@ -289,6 +289,9 @@ function HomeScreen({ gameState, onNavigate }) {
       setShowUsernameModal(false);
       setUsernameInput('');
       setUsernameError('');
+      // Show tutorial after username creation
+      setShowTutorial(true);
+      setTutorialStep(0);
       alert('Username created successfully!');
     } catch (error) {
       console.error('Error creating username:', error);
@@ -305,6 +308,8 @@ function HomeScreen({ gameState, onNavigate }) {
     // #endregion
     if (googleUser && !googleUser.username) {
       setShowUsernameModal(true);
+      // Hide tutorial while username modal is shown
+      setShowTutorial(false);
     }
   }, [googleUser]);
 
@@ -312,31 +317,35 @@ function HomeScreen({ gameState, onNavigate }) {
   useEffect(() => {
     if (!googleUser?.email) return;
 
-    // Dynamic import to avoid issues with SSR
-    import('../utils/socket.js').then(({ initSocket, disconnectSocket, onUserStatusChange }) => {
-      const userId = normalizeUserId(googleUser.email);
-      initSocket(userId);
+    // Fetch friends and friend requests
+    fetchFriends();
+    fetchFriendRequests();
 
-      // Listen for friend status changes
-      const unsubscribe = onUserStatusChange((data) => {
-        setOnlineStatuses(prev => ({
-          ...prev,
-          [data.userId]: {
-            isOnline: data.isOnline,
-            lastSeen: data.lastSeen
-          }
-        }));
-      });
+    // Only initialize socket in development (where we have the socket server)
+    if (import.meta.env.DEV) {
+      import('../utils/socket.js')
+        .then(({ initSocket, disconnectSocket, onUserStatusChange }) => {
+          const userId = normalizeUserId(googleUser.email);
+          initSocket(userId);
+          
+          // Listen for friend status changes
+          const unsubscribe = onUserStatusChange((data) => {
+            setOnlineStatuses(prev => ({
+              ...prev,
+              [data.userId]: {
+                isOnline: data.isOnline,
+                lastSeen: data.lastSeen
+              }
+            }));
+          });
 
-      // Fetch friends and friend requests
-      fetchFriends();
-      fetchFriendRequests();
-
-      return () => {
-        unsubscribe();
-        disconnectSocket();
-      };
-    });
+          return () => {
+            unsubscribe();
+            disconnectSocket();
+          };
+        })
+        .catch(err => console.log('Socket connection not available:', err));
+    }
   }, [googleUser]);
 
   useEffect(() => {
@@ -344,7 +353,10 @@ function HomeScreen({ gameState, onNavigate }) {
       setShowTutorial(true);
       return;
     }
-    setShowTutorial(localStorage.getItem('pomoDungeon_homeTutorialSeen') !== 'true');
+    // Only show tutorial if user has username and hasn't seen it
+    if (googleUser.username) {
+      setShowTutorial(localStorage.getItem('pomoDungeon_homeTutorialSeen') !== 'true');
+    }
   }, [googleUser]);
 
   useEffect(() => {

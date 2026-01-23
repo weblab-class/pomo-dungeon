@@ -114,8 +114,10 @@ export const registerApiMiddleware = (server, { mongoUri }) => {
         return;
       }
 
-      // Check if username exists
-      const existing = await User.findOne({ username: username });
+      // Check if username exists (case-insensitive)
+      const existing = await User.findOne({ 
+        username: { $regex: new RegExp(`^${username}$`, 'i') } 
+      });
       // #region agent log
       fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api.js:check-username-db-result',message:'Database query result',data:{username:username,existingFound:!!existing,existingId:existing?._id,existingUsername:existing?.username,available:!existing},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'H2'})}).catch(()=>{});
       // #endregion
@@ -147,8 +149,10 @@ export const registerApiMiddleware = (server, { mongoUri }) => {
         return;
       }
 
-      // Check if username is already taken
-      const existing = await User.findOne({ username: username });
+      // Check if username is already taken (case-insensitive)
+      const existing = await User.findOne({ 
+        username: { $regex: new RegExp(`^${username}$`, 'i') } 
+      });
       // #region agent log
       fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api.js:set-username-existing-check',message:'Checked existing username',data:{username:username,existingFound:!!existing,existingUserId:existing?.userId?.substring(0,20),normalizedId:normalizedId?.substring(0,20),isSameUser:existing?.userId===normalizedId},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'FIX'})}).catch(()=>{});
       // #endregion
