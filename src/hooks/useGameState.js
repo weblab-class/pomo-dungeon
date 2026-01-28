@@ -158,6 +158,9 @@ export function useGameState() {
   // Delete a task
   const deleteTask = (taskId) => {
     const task = tasks.find((t) => t.id === taskId);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/e7b0bc9d-6948-4adc-afad-7004a329e4a6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useGameState.js:deleteTask',message:'deleteTask called',data:{taskId,taskFound:!!task,currentCount:tasks.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H4'})}).catch(()=>{});
+    // #endregion
     // Persist deleted id so loadTasks won't bring it back if server is slow or failed
     try {
       const deleted = JSON.parse(localStorage.getItem(STORAGE_KEYS.DELETED_TASK_IDS) || '[]');
@@ -179,18 +182,10 @@ export function useGameState() {
           await postJson('/api/tasks/delete', { userId, taskId });
         } catch (err) {
           // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/e7b0bc9d-6948-4adc-afad-7004a329e4a6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useGameState.js:deleteTask-api-fail',message:'deleteTask API failed, reverting',data:{taskId,err:err?.message},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H4'})}).catch(()=>{});
+          fetch('http://127.0.0.1:7242/ingest/e7b0bc9d-6948-4adc-afad-7004a329e4a6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useGameState.js:deleteTask-api-fail',message:'deleteTask API failed (keeping optimistic remove)',data:{taskId,err:err?.message},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'H4'})}).catch(()=>{});
           // #endregion
-          if (task) {
-            deletedIdsInMemoryRef.current.delete(taskId);
-            setTasks((prev) => [...prev, task]);
-            try {
-              const deleted = JSON.parse(localStorage.getItem(STORAGE_KEYS.DELETED_TASK_IDS) || '[]');
-              localStorage.setItem(STORAGE_KEYS.DELETED_TASK_IDS, JSON.stringify(deleted.filter((id) => id !== taskId)));
-            } catch {
-              /* ignore */
-            }
-          }
+          // Do not revert: keep optimistic remove. Task stays in DELETED_TASK_IDS and
+          // deletedIdsInMemoryRef so loadTasks won't bring it back. Server may retry later.
           console.error('Failed to delete task', err);
         }
       })();

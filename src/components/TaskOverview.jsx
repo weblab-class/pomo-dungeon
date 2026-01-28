@@ -167,13 +167,6 @@ function TaskOverview({ gameState, onNavigate, onStartTask }) {
     }
   }, [activeTasks]);
 
-  
-  // #region agent log
-  useEffect(() => {
-    fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TaskOverview.jsx:24',message:'Active tasks sorted order',data:{taskCount:activeTasks.length,taskOrder:activeTasks.map((t,i)=>({id:t.id,index:i,priority:t.priority,createdAt:t.createdAt,name:t.name}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-  }, [activeTasks]);
-  // #endregion
-
   const formatTimeRemaining = (deadline) => {
     if (!deadline) return null;
     const now = new Date();
@@ -204,13 +197,7 @@ function TaskOverview({ gameState, onNavigate, onStartTask }) {
 
   useEffect(() => {
     const idsSignature = activeTasks.map((task) => task.id).join('|');
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TaskOverview.jsx:53',message:'Task list changed - checking signature',data:{prevSignature:prevTaskIdsRef.current,newSignature:idsSignature,taskIds:activeTasks.map(t=>t.id),taskOrder:activeTasks.map((t,i)=>({id:t.id,index:i,priority:t.priority,createdAt:t.createdAt}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
     if (idsSignature !== prevTaskIdsRef.current) {
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TaskOverview.jsx:56',message:'Task signature changed - setting board updating',data:{prevSignature:prevTaskIdsRef.current,newSignature:idsSignature,addedTasks:activeTasks.filter(t=>!prevTaskIdsRef.current.includes(t.id)).map(t=>t.id),removedTasks:prevTaskIdsRef.current.split('|').filter(id=>!idsSignature.includes(id))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
       prevTaskIdsRef.current = idsSignature;
       setIsBoardUpdating(true);
       const timer = setTimeout(() => setIsBoardUpdating(false), 200);
@@ -273,13 +260,7 @@ function TaskOverview({ gameState, onNavigate, onStartTask }) {
                       position: stablePositionMapRef.current.get(task.id) ?? Infinity
                     }));
                     tasksWithPositions.sort((a, b) => a.position - b.position);
-                    return tasksWithPositions.map(({ task }, index) => {
-                    // #region agent log
-                    if (index === 0 || index === Math.floor(activeTasks.length / 2) || index === activeTasks.length - 1) {
-                      fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TaskOverview.jsx:140',message:'Rendering task in grid',data:{taskId:task.id,index,isAnimated:animatedTaskIds.has(task.id),isBoardUpdating,totalTasks:activeTasks.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-                    }
-                    // #endregion
-                    return (
+                    return tasksWithPositions.map(({ task }, index) => (
                     <div 
                       key={task.id} 
                       className={`quest-scroll-container${animatedTaskIds.has(task.id) ? ' quest-scroll-animate' : ''}`}
@@ -332,7 +313,7 @@ function TaskOverview({ gameState, onNavigate, onStartTask }) {
                           onClick={(e) => {
                             e.stopPropagation();
                             // #region agent log
-                            fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TaskOverview.jsx:193',message:'Deleting task',data:{deletedTaskId:task.id,currentTaskIds:gameState.tasks.filter(t=>!t.completed).map(t=>t.id),currentTaskCount:gameState.tasks.filter(t=>!t.completed).length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+                            fetch('http://127.0.0.1:7242/ingest/e7b0bc9d-6948-4adc-afad-7004a329e4a6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TaskOverview.jsx:193',message:'Deleting task',data:{deletedTaskId:task.id,currentTaskIds:gameState.tasks.filter(t=>!t.completed).map(t=>t.id),currentTaskCount:gameState.tasks.filter(t=>!t.completed).length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
                             // #endregion
                             gameState.deleteTask(task.id);
                           }}
@@ -341,8 +322,7 @@ function TaskOverview({ gameState, onNavigate, onStartTask }) {
                         </button>
                       </div>
                     </div>
-                    );
-                  });
+                    ));
                   })()}
                 </div>
               )}
@@ -355,9 +335,6 @@ function TaskOverview({ gameState, onNavigate, onStartTask }) {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSubmit={(taskData) => {
-          // #region agent log
-          fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TaskOverview.jsx:213',message:'Adding new task',data:{taskData,currentTaskIds:gameState.tasks.filter(t=>!t.completed).map(t=>t.id),currentTaskCount:gameState.tasks.filter(t=>!t.completed).length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-          // #endregion
           gameState.addTask(taskData);
           setIsModalOpen(false);
         }}
