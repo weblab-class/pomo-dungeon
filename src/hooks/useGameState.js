@@ -55,6 +55,9 @@ export function useGameState() {
       }
       const toRemove = prev.filter((t) => deleted.includes(t.id));
       if (toRemove.length === 0) return prev;
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/e7b0bc9d-6948-4adc-afad-7004a329e4a6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useGameState.js:sync-on-mount',message:'sync-on-mount: corrected tasks by DELETED_TASK_IDS',data:{removedIds:toRemove.map(t=>t.id),deletedCount:toRemove.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H6'})}).catch(()=>{});
+      // #endregion
       return prev.filter((t) => !deleted.includes(t.id));
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount; setTasks intentionally omitted
@@ -62,15 +65,26 @@ export function useGameState() {
 
   useEffect(() => {
     const userId = googleUser?.sub || googleUser?.email;
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/e7b0bc9d-6948-4adc-afad-7004a329e4a6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useGameState.js:loadTasks-effect',message:'loadTasks effect run',data:{sub:googleUser?.sub,email:googleUser?.email,userId},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H5'})}).catch(()=>{});
+    // #endregion
     if (!userId) return undefined;
     let isActive = true;
 
     const loadTasks = async () => {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/e7b0bc9d-6948-4adc-afad-7004a329e4a6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useGameState.js:loadTasks-fn',message:'loadTasks() called',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H5'})}).catch(()=>{});
+      // #endregion
       const genAtStart = mutationCountRef.current;
       try {
         const res = await getJson(`/api/tasks/${userId}`);
         if (isActive && Array.isArray(res.tasks)) {
-          if (mutationCountRef.current !== genAtStart) return;
+          if (mutationCountRef.current !== genAtStart) {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/e7b0bc9d-6948-4adc-afad-7004a329e4a6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useGameState.js:loadTasks-skip-mutation',message:'loadTasks skip (mutation guard)',data:{genAtStart,mutationCount:mutationCountRef.current},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2'})}).catch(()=>{});
+            // #endregion
+            return;
+          }
           // Filter out any tasks the user has deleted (in case server is slow or failed to apply delete)
           let deletedIds = [];
           try {
@@ -79,6 +93,9 @@ export function useGameState() {
             deletedIds = [];
           }
           const filtered = res.tasks.filter((t) => !deletedIds.includes(t.id) && !deletedIdsInMemoryRef.current.has(t.id));
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/e7b0bc9d-6948-4adc-afad-7004a329e4a6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useGameState.js:loadTasks-setTasks',message:'loadTasks setTasks (filtered)',data:{deletedIds,resIds:res.tasks.map(t=>t.id),filteredIds:filtered.map(t=>t.id),filteredOut:res.tasks.length-filtered.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3'})}).catch(()=>{});
+          // #endregion
           // Do not remove ids from deletedIds: a later loadTasks can get a server response that
           // still includes a deleted task (replica, timing, or failed delete). We only clear
           // deletedIds when the user switches accounts.
@@ -146,6 +163,9 @@ export function useGameState() {
       const deleted = JSON.parse(localStorage.getItem(STORAGE_KEYS.DELETED_TASK_IDS) || '[]');
       if (!deleted.includes(taskId)) deleted.push(taskId);
       localStorage.setItem(STORAGE_KEYS.DELETED_TASK_IDS, JSON.stringify(deleted));
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/e7b0bc9d-6948-4adc-afad-7004a329e4a6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useGameState.js:deleteTask-write',message:'deleteTask wrote to DELETED_TASK_IDS',data:{taskId,deletedIds:deleted},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
+      // #endregion
     } catch {
       /* ignore */
     }
@@ -158,6 +178,9 @@ export function useGameState() {
         try {
           await postJson('/api/tasks/delete', { userId, taskId });
         } catch (err) {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/e7b0bc9d-6948-4adc-afad-7004a329e4a6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useGameState.js:deleteTask-api-fail',message:'deleteTask API failed, reverting',data:{taskId,err:err?.message},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H4'})}).catch(()=>{});
+          // #endregion
           if (task) {
             deletedIdsInMemoryRef.current.delete(taskId);
             setTasks((prev) => [...prev, task]);
