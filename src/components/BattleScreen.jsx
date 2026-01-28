@@ -241,6 +241,9 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
 
   // Handle flee - save progress and exit
   const handleFlee = () => {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'BattleScreen.jsx:243',message:'handleFlee called',data:{taskId:task?.id,taskName:task?.name,isPomodoro:task?.isPomodoro,hasTask:!!task},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     // Pause first
     if (!paused) {
       setPaused(true);
@@ -250,6 +253,9 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
     withWidget((widget) => widget.pause());
     // Save the elapsed time to the task
     gameState.updateTask(task.id, { timeSpent: elapsed });
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'BattleScreen.jsx:253',message:'Calling onExit',data:{isPomodoro:task?.isPomodoro},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     onExit();
   };
 

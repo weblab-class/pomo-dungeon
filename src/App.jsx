@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { SCREENS } from './data/constants';
+import { SCREENS, MODE } from './data/constants';
 import { useGameState } from './hooks/useGameState';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import HomeScreen from './components/HomeScreen';
@@ -182,10 +182,12 @@ function App() {
         return;
       }
 
+      // Check if state has pomodoro flag for home screen
+      const isPomodoroMode = screen === SCREENS.HOME && state?.task?.isPomodoro;
       setSelectedTask(null);
       setCurrentScreen(screen);
       if (replace) {
-        pushHistory(screen, null, { replace: true });
+        pushHistory(screen, isPomodoroMode ? { isPomodoro: true } : null, { replace: true });
       }
     };
 
@@ -206,15 +208,22 @@ function App() {
     };
   }, [gameState.tasks, pushHistory]);
 
-  const navigateTo = (screen, task = null) => {
+  const navigateTo = (screen, task = null, options = {}) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:209',message:'navigateTo called',data:{screen,taskId:task?.id,taskName:task?.name,isPomodoro:task?.isPomodoro,hasTask:!!task,currentScreen,selectedTaskId:selectedTask?.id,selectedTaskIsPomodoro:selectedTask?.isPomodoro,options},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
+    // #endregion
     if (screen === SCREENS.BATTLE && !task) return;
+    // Check if we're navigating from a pomodoro battle before clearing selectedTask
+    const isFromPomodoro = selectedTask?.isPomodoro && screen === SCREENS.HOME;
     if (task) {
       setSelectedTask(task);
     } else if (screen !== SCREENS.BATTLE) {
       setSelectedTask(null);
     }
     setCurrentScreen(screen);
-    pushHistory(screen, task);
+    // Store pomodoro mode flag in history state if navigating to home from pomodoro
+    const historyTask = isFromPomodoro ? { isPomodoro: true } : task;
+    pushHistory(screen, historyTask);
   };
 
   const startTask = (task) => {
@@ -228,13 +237,21 @@ function App() {
 
   const renderScreen = () => {
     switch (currentScreen) {
-      case SCREENS.HOME:
+      case SCREENS.HOME: {
+        // Check history state for pomodoro flag
+        const historyState = window.history.state;
+        const isPomodoroMode = historyState?.task?.isPomodoro;
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:231',message:'Rendering HomeScreen',data:{historyState,isPomodoroMode,willSetMode:isPomodoroMode?MODE.STOPWATCH:'default'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B,E'})}).catch(()=>{});
+        // #endregion
         return (
           <HomeScreen
             gameState={gameState}
             onNavigate={navigateTo}
+            initialMode={isPomodoroMode ? MODE.STOPWATCH : undefined}
           />
         );
+      }
       case SCREENS.TASKS:
         return (
           <TaskOverview
@@ -248,8 +265,18 @@ function App() {
           <BattleScreen
             task={selectedTask}
             gameState={gameState}
-            onExit={() => navigateTo(SCREENS.TASKS)}
-            onComplete={() => navigateTo(SCREENS.TASKS)}
+            onExit={() => {
+              // #region agent log
+              fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:251',message:'BattleScreen onExit callback',data:{selectedTaskId:selectedTask?.id,selectedTaskName:selectedTask?.name,isPomodoro:selectedTask?.isPomodoro,willNavigateTo:selectedTask?.isPomodoro?'HOME':'TASKS'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+              // #endregion
+              navigateTo(selectedTask?.isPomodoro ? SCREENS.HOME : SCREENS.TASKS);
+            }}
+            onComplete={() => {
+              // #region agent log
+              fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:252',message:'BattleScreen onComplete callback',data:{selectedTaskId:selectedTask?.id,isPomodoro:selectedTask?.isPomodoro,willNavigateTo:selectedTask?.isPomodoro?'HOME':'TASKS'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+              // #endregion
+              navigateTo(selectedTask?.isPomodoro ? SCREENS.HOME : SCREENS.TASKS);
+            }}
           />
         );
       case SCREENS.COLLECTIONS:

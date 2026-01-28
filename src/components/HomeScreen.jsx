@@ -10,12 +10,17 @@ import homeScreenRedAudio from '../../audio/the_night_before_battle.mp3';
 const W = 320;
 const H = 180;
 
-function HomeScreen({ gameState, onNavigate }) {
+function HomeScreen({ gameState, onNavigate, initialMode }) {
   const canvasRef = useRef(null);
   const audioRef = useRef(null);
   const audioSourceRef = useRef(homeScreenAudio);
   const fadeTimerRef = useRef(null);
-  const [mode, setMode] = useState(MODE.TASKS);
+  const [mode, setMode] = useState(initialMode || MODE.TASKS);
+  // #region agent log
+  useEffect(() => {
+    fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HomeScreen.jsx:18',message:'HomeScreen mounted',data:{initialMode,mode,isRedMoon:mode===MODE.STOPWATCH},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B,E'})}).catch(()=>{});
+  }, []);
+  // #endregion
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isPomodoroModalOpen, setIsPomodoroModalOpen] = useState(false);
   const [pomodoroDefaults, setPomodoroDefaults] = useState({
