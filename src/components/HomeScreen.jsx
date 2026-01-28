@@ -29,9 +29,12 @@ function HomeScreen({ gameState, onNavigate }) {
   const [musicEnabled, setMusicEnabled] = useLocalStorage('pomoDungeon_musicEnabled', true);
   const [musicVolume, setMusicVolume] = useLocalStorage('pomoDungeon_musicVolume', 0.35);
   const [authError, setAuthError] = useState('');
-  const [showTutorial, setShowTutorial] = useState(
-    () => !googleUser || localStorage.getItem('pomoDungeon_homeTutorialSeen') !== 'true'
-  );
+  const [showTutorial, setShowTutorial] = useState(() => {
+    const hasUser = !!googleUser;
+    const tutorialSeen = localStorage.getItem('pomoDungeon_homeTutorialSeen') === 'true';
+    // Only show tutorial if user is logged in AND hasn't seen it
+    return hasUser && !tutorialSeen;
+  });
   const [tutorialStep, setTutorialStep] = useState(0);
   const maxTutorialStep = 3;
   const googleInitRef = useRef(false);
@@ -91,6 +94,18 @@ function HomeScreen({ gameState, onNavigate }) {
       const userId = normalizeUserId(googleUser.email);
       const data = await getJson(`/api/friends/${encodeURIComponent(userId)}`);
       setFriends(data.friends || []);
+      
+      // Initialize online statuses from API response
+      const initialStatuses = {};
+      (data.friends || []).forEach(friend => {
+        if (friend.id) {
+          initialStatuses[friend.id] = {
+            isOnline: friend.isOnline || false,
+            lastSeen: friend.lastSeen || null
+          };
+        }
+      });
+      setOnlineStatuses(prev => ({ ...prev, ...initialStatuses }));
     } catch (error) {
       console.error('Error fetching friends:', error);
     }
@@ -227,13 +242,7 @@ function HomeScreen({ gameState, onNavigate }) {
 
   const checkUsernameAvailable = async (username) => {
     try {
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HomeScreen.jsx:checkUsername-entry',message:'Frontend check username',data:{username:username,encodedUsername:encodeURIComponent(username)},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'H3'})}).catch(()=>{});
-      // #endregion
       const data = await getJson(`/api/users/check-username?username=${encodeURIComponent(username)}`);
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HomeScreen.jsx:checkUsername-response',message:'API response received',data:{username:username,responseData:data,available:data.available,error:data.error},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'H3'})}).catch(()=>{});
-      // #endregion
       if (typeof data?.available !== 'boolean') {
         const apiError = data?.error ? `: ${data.error}` : '';
         throw new Error(`Username check failed${apiError}`);
@@ -241,9 +250,6 @@ function HomeScreen({ gameState, onNavigate }) {
       return data.available;
     } catch (error) {
       console.error('Error checking username:', error);
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HomeScreen.jsx:checkUsername-error',message:'Check username error',data:{username:username,errorMessage:error.message},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'H5'})}).catch(()=>{});
-      // #endregion
       throw error;
     }
   };
@@ -252,16 +258,10 @@ function HomeScreen({ gameState, onNavigate }) {
     if (e) e.preventDefault();
     
     const trimmedUsername = usernameInput.trim();
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HomeScreen.jsx:handleCreate-entry',message:'Handle create username',data:{rawInput:usernameInput,trimmedUsername:trimmedUsername},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'H3'})}).catch(()=>{});
-    // #endregion
     
     // Validate format
     const error = validateUsername(trimmedUsername);
     if (error) {
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HomeScreen.jsx:handleCreate-validation-error',message:'Validation error',data:{trimmedUsername:trimmedUsername,validationError:error},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'H4'})}).catch(()=>{});
-      // #endregion
       setUsernameError(error);
       return;
     }
@@ -279,9 +279,6 @@ function HomeScreen({ gameState, onNavigate }) {
         setIsCheckingUsername(false);
         return;
       }
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HomeScreen.jsx:handleCreate-availability',message:'Availability check result',data:{trimmedUsername:trimmedUsername,available:available,willShowError:!available},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'H1'})}).catch(()=>{});
-      // #endregion
       if (!available) {
         setUsernameError('Username already taken. Please choose another.');
         setIsCheckingUsername(false);
@@ -314,9 +311,6 @@ function HomeScreen({ gameState, onNavigate }) {
 
   // Show username modal if user doesn't have username
   useEffect(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HomeScreen.jsx:username-modal-check',message:'Checking if username modal should show',data:{hasGoogleUser:!!googleUser,googleUserEmail:googleUser?.email,hasUsername:!!googleUser?.username,username:googleUser?.username,willShowModal:!!(googleUser && !googleUser.username)},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'USERNAME_PERSIST'})}).catch(()=>{});
-    // #endregion
     if (googleUser && !googleUser.username) {
       setShowUsernameModal(true);
       // Hide tutorial while username modal is shown
@@ -332,42 +326,41 @@ function HomeScreen({ gameState, onNavigate }) {
     fetchFriends();
     fetchFriendRequests();
 
-    // Only initialize socket in development (where we have the socket server)
-    if (import.meta.env.DEV) {
-      import('../utils/socket.js')
-        .then(({ initSocket, disconnectSocket, onUserStatusChange }) => {
-          const userId = normalizeUserId(googleUser.email);
-          initSocket(userId);
-          
-          // Listen for friend status changes
-          const unsubscribe = onUserStatusChange((data) => {
-            setOnlineStatuses(prev => ({
-              ...prev,
-              [data.userId]: {
-                isOnline: data.isOnline,
-                lastSeen: data.lastSeen
-              }
-            }));
-          });
+    // Initialize socket connection (works in both dev and production if socket server is available)
+    import('../utils/socket.js')
+      .then(({ initSocket, disconnectSocket, onUserStatusChange }) => {
+        const userId = normalizeUserId(googleUser.email);
+        initSocket(userId);
+        
+        // Listen for friend status changes
+        const unsubscribe = onUserStatusChange((data) => {
+          setOnlineStatuses(prev => ({
+            ...prev,
+            [data.userId]: {
+              isOnline: data.isOnline,
+              lastSeen: data.lastSeen
+            }
+          }));
+        });
 
-          return () => {
-            unsubscribe();
-            disconnectSocket();
-          };
-        })
-        .catch(err => console.log('Socket connection not available:', err));
-    }
+        return () => {
+          unsubscribe();
+          disconnectSocket();
+        };
+      })
+      .catch(err => {
+        // Silently fail if socket server is not available
+        console.log('Socket connection not available:', err);
+      });
   }, [googleUser]);
 
   useEffect(() => {
-    if (!googleUser) {
-      setShowTutorial(true);
+    // Only show tutorial if user is logged in AND has username AND hasn't seen it
+    if (!googleUser || !googleUser.username) {
+      setShowTutorial(false);
       return;
     }
-    // Only show tutorial if user has username and hasn't seen it
-    if (googleUser.username) {
-      setShowTutorial(localStorage.getItem('pomoDungeon_homeTutorialSeen') !== 'true');
-    }
+    setShowTutorial(localStorage.getItem('pomoDungeon_homeTutorialSeen') !== 'true');
   }, [googleUser]);
 
   useEffect(() => {
@@ -613,10 +606,6 @@ function HomeScreen({ gameState, onNavigate }) {
           const data = await res.json();
           setAuthError('');
           
-          // #region agent log
-          fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HomeScreen.jsx:oauth-callback',message:'Google OAuth success',data:{email:data.email,name:data.name},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'USERNAME_PERSIST'})}).catch(()=>{});
-          // #endregion
-          
           // Upsert user in MongoDB and fetch existing username
           try {
             const userId = normalizeUserId(data.email);
@@ -627,10 +616,6 @@ function HomeScreen({ gameState, onNavigate }) {
               picture: data.picture
             });
             
-            // #region agent log
-            fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HomeScreen.jsx:upsert-success',message:'User upserted in MongoDB',data:{userId:userId?.substring(0,20),hasUsername:!!upsertRes?.user?.username,username:upsertRes?.user?.username},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'USERNAME_PERSIST'})}).catch(()=>{});
-            // #endregion
-            
             setGoogleUser({
               name: data.name,
               email: data.email,
@@ -639,9 +624,6 @@ function HomeScreen({ gameState, onNavigate }) {
               username: upsertRes?.user?.username || null, // Include username from DB
             });
           } catch (dbError) {
-            // #region agent log
-            fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HomeScreen.jsx:upsert-error',message:'Failed to upsert user',data:{error:dbError.message},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'USERNAME_PERSIST'})}).catch(()=>{});
-            // #endregion
             console.error('Failed to upsert user in MongoDB:', dbError);
             // Still set googleUser with OAuth data even if DB call fails
             setGoogleUser({

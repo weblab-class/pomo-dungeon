@@ -598,7 +598,7 @@ export const registerApiMiddleware = (server, { mongoUri }) => {
         ]
       });
 
-      // Map to friend list with usernames
+      // Map to friend list with usernames and online status
       const friends = await Promise.all(
         requests.map(async (req) => {
           const friendId = req.requesterId === normalizedId ? req.receiverId : req.requesterId;
@@ -606,7 +606,9 @@ export const registerApiMiddleware = (server, { mongoUri }) => {
           
           return {
             id: friendId,
-            username: friendUser?.username || friendUser?.name || friendUser?.userId || friendId
+            username: friendUser?.username || friendUser?.name || friendUser?.userId || friendId,
+            isOnline: friendUser?.isOnline || false,
+            lastSeen: friendUser?.lastSeen || null
           };
         })
       );

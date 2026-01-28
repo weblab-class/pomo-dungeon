@@ -74,9 +74,7 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
   const dungeonRoom = task?.dungeonRoom || DUNGEON_ROOMS[0];
   const soundCloudPlaylistUrl = 'https://on.soundcloud.com/2acGXci60bIST51lyF';
   const buildWidgetUrl = (url) =>
-    `https://w.soundcloud.com/player/?url=${encodeURIComponent(
-      url
-    )}&auto_play=false&show_comments=false&show_user=false&show_reposts=false&visual=false`;
+    `https://w.soundcloud.com/player/?url=${encodeURIComponent(url)}&auto_play=true&show_comments=false&show_user=false&show_reposts=false&visual=false`;
   const [soundCloudWidgetSrc, setSoundCloudWidgetSrc] = useState(() =>
     buildWidgetUrl(soundCloudPlaylistUrl)
   );
@@ -106,19 +104,8 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
   }, [paused]);
 
   useEffect(() => {
-    const handleUserInteract = () => {
-      userInteractedRef.current = true;
-      if (musicEnabledRef.current && !pausedRef.current) {
-        withWidget((widget) => widget.play());
-      }
-    };
-
-    window.addEventListener('pointerdown', handleUserInteract, { once: true });
-    window.addEventListener('keydown', handleUserInteract, { once: true });
-    return () => {
-      window.removeEventListener('pointerdown', handleUserInteract);
-      window.removeEventListener('keydown', handleUserInteract);
-    };
+    // Mark user as interacted immediately when battle screen loads (entering battle is user interaction)
+    userInteractedRef.current = true;
   }, []);
 
   useEffect(() => {
@@ -184,9 +171,13 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
         widget.bind(window.SC.Widget.Events.READY, () => {
           if (cancelled) return;
           soundCloudReadyRef.current = true;
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'BattleScreen.jsx:widget-ready',message:'SoundCloud widget ready',data:{musicEnabled:musicEnabledRef.current,paused:pausedRef.current,userInteracted:userInteractedRef.current,willPlay:musicEnabledRef.current&&!pausedRef.current&&userInteractedRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'H9_WIDGET_READY'})}).catch(()=>{});
+          // #endregion
           withWidget((current) =>
             current.setVolume(Math.round(Math.max(0, Math.min(1, musicVolumeRef.current)) * 100))
           );
+          // Auto-play music when widget is ready (user already interacted by entering battle)
           if (musicEnabledRef.current && !pausedRef.current && userInteractedRef.current) {
             withWidget((current) => current.play());
           }
