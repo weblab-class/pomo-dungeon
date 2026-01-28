@@ -171,9 +171,6 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
         widget.bind(window.SC.Widget.Events.READY, () => {
           if (cancelled) return;
           soundCloudReadyRef.current = true;
-          // #region agent log
-          fetch('http://127.0.0.1:7243/ingest/13d600c1-3f34-4e60-b1d2-361a4f00b402',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'BattleScreen.jsx:widget-ready',message:'SoundCloud widget ready',data:{musicEnabled:musicEnabledRef.current,paused:pausedRef.current,userInteracted:userInteractedRef.current,willPlay:musicEnabledRef.current&&!pausedRef.current&&userInteractedRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'H9_WIDGET_READY'})}).catch(()=>{});
-          // #endregion
           withWidget((current) =>
             current.setVolume(Math.round(Math.max(0, Math.min(1, musicVolumeRef.current)) * 100))
           );
