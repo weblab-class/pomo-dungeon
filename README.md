@@ -13,6 +13,12 @@ local storage, and can optionally sync to MongoDB when Google sign-in is enabled
 - Google sign-in + cloud sync
 - SoundCloud API for SoundCloud playlist
 
+## Functions
+1. Switch mode between different pomodoro and to-do list by clicking on the moon
+2. Choose track from your favorite medieval playlist and watch the battle animations.
+3. Get a special animation effect when the player kills the monster
+4. Easter egg: click on the bats to kill them!
+
 ## Quick Start
 
 ```bash
@@ -34,3 +40,4 @@ Open `http://localhost:5173`.
 Luiz Melo on itch.io for providing free rpg elements
 Adobe Creative Cloud for providing backdrops
 Medieval Lofi for providing lofi music
+SoundCloud for providing SoundCloud API
