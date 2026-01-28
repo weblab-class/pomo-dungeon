@@ -414,27 +414,17 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
     const monsterWalkDuration = monsterWalkFrames * monsterWalkFrameDuration;
     const monsterReturnDuration = monsterWalkDuration;
     const playerReturnDuration = runDuration;
-    const monsterAttackStartDelay = runDuration + maxAttackDuration + playerReturnDuration + ATTACK_DELAY_MS;
+    // Use max 3-hit combo so the interval never fires before the monster finishes returning
+    const maxComboAttackDuration = 3 * maxAttackDuration;
+    const monsterAttackStartDelayForCycle = runDuration + maxComboAttackDuration + playerReturnDuration + ATTACK_DELAY_MS;
     const monsterCycleDuration =
-      monsterAttackStartDelay +
+      monsterAttackStartDelayForCycle +
       monsterWalkDuration +
       monsterAttackDuration +
       monsterReturnDuration +
       200;
 
-    // #region agent log
-    try {
-      fetch('http://127.0.0.1:7242/ingest/e7b0bc9d-6948-4adc-afad-7004a329e4a6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'BattleScreen.jsx:effect',message:'monster frame counts',data:{monsterWalkFrames,monsterFrames,monsterIdleFrames,monsterId:monster?.id,monsterWalkDuration,monsterAttackDuration,monsterReturnDuration,monsterCycleDuration},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3'})}).catch(()=>{});
-    } catch(_){}
-    // #endregion
-
     const startCycle = (startTime) => {
-      // #region agent log
-      const oldStart = monsterAttackStartRef.current;
-      const oldElapsed = startTime - oldStart;
-      const wasReturning = oldElapsed >= monsterWalkDuration + monsterAttackDuration && oldElapsed < monsterWalkDuration + monsterAttackDuration + monsterReturnDuration;
-      const returnProgress = wasReturning ? 1 - (oldElapsed - monsterWalkDuration - monsterAttackDuration) / monsterReturnDuration : null;
-      // #endregion
       const attackPool = [
         ...playerAttackSprites,
         ...(playerRunAttackSprite ? [playerRunAttackSprite] : []),
@@ -457,11 +447,6 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
       playerAttackStartRef.current = startTime;
       const attackStartDelay = runDuration + totalDuration + playerReturnDuration + ATTACK_DELAY_MS;
       monsterAttackStartRef.current = startTime + attackStartDelay;
-      // #region agent log
-      try {
-        fetch('http://127.0.0.1:7242/ingest/e7b0bc9d-6948-4adc-afad-7004a329e4a6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'BattleScreen.jsx:startCycle',message:'cycle reset',data:{wasReturning,returnProgress,comboLength,totalDuration,attackStartDelay,monsterCycleDuration},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
-      } catch(_){}
-      // #endregion
     };
 
     startCycle(performance.now());

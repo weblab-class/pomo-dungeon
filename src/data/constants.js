@@ -65,7 +65,7 @@ export const MONSTERS = {
     attackSprite: "Attack.png",
     walkSprite: "Flight.png",
     hitSprite: "Take%20Hit.png",
-    // walkFrameDurationMs: 90,
+    walkFrameDurationMs: 130,
   },
 };
 
