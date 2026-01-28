@@ -1666,6 +1666,108 @@ body {
   min-width: 150px;
 }
 
+/* ======================= BREAK / PAUSE OVERLAY ======================= */
+.break-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 90;
+  overflow: hidden;
+  animation: fadeIn 0.35s ease;
+}
+
+.break-overlay-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.break-overlay-content {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+}
+
+.break-overlay-timer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-family: 'MedievalSharp', cursive;
+  color: #f4e4bc;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+  padding: 12px 24px;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 8px;
+  border: 1px solid rgba(139, 105, 20, 0.4);
+}
+
+.break-overlay-label {
+  font-size: 1.2rem;
+  letter-spacing: 2px;
+  opacity: 0.95;
+}
+
+.break-overlay-remaining {
+  font-size: 2.4rem;
+  font-weight: 700;
+  letter-spacing: 3px;
+}
+
+.break-overlay .btn-resume {
+  font-family: 'MedievalSharp', cursive;
+  font-size: 1.8rem;
+  padding: 20px 40px;
+  background: linear-gradient(180deg, #3d2a1a 0%, #2a1a0f 100%);
+  border: 3px solid #8b6914;
+  border-radius: 6px;
+  color: #f4e4bc;
+  cursor: pointer;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+  box-shadow:
+    0 6px 16px rgba(0, 0, 0, 0.5),
+    inset 0 2px 0 rgba(255, 255, 255, 0.1);
+  transition: all 0.2s ease;
+  letter-spacing: 2px;
+}
+
+.break-overlay .btn-resume:hover {
+  background: linear-gradient(180deg, #4d3a2a 0%, #3a2a1f 100%);
+  border-color: #c9a227;
+  transform: translateY(-3px);
+  box-shadow:
+    0 10px 20px rgba(0, 0, 0, 0.6),
+    inset 0 2px 0 rgba(255, 255, 255, 0.15);
+}
+
+@media (max-width: 600px) {
+  .break-overlay-content {
+    gap: 18px;
+  }
+
+  .break-overlay-label {
+    font-size: 1rem;
+  }
+
+  .break-overlay-remaining {
+    font-size: 1.8rem;
+  }
+
+  .break-overlay .btn-resume {
+    font-size: 1.3rem;
+    padding: 16px 28px;
+  }
+}
+
 /* ======================= VICTORY OVERLAY ======================= */
 .victory-overlay {
   position: absolute;
