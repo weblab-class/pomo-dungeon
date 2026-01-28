@@ -129,7 +129,13 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
         const iframe = doc.querySelector('iframe');
         const src = iframe?.getAttribute('src');
         if (src && !cancelled) {
-          setSoundCloudWidgetSrc(src);
+          try {
+            const u = new URL(src);
+            u.searchParams.set('auto_play', 'true');
+            setSoundCloudWidgetSrc(u.toString());
+          } catch {
+            setSoundCloudWidgetSrc(src);
+          }
         }
       } catch (error) {
         // eslint-disable-next-line no-console
@@ -265,6 +271,8 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
       if (newElapsed >= duration) {
         if (isPomodoro && phase === 'study') {
           setPhase('break');
+        } else if (isPomodoro && phase === 'break') {
+          setPhase('study');
         } else {
           handleComplete();
         }
@@ -690,13 +698,14 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
 
     if (task?.isPomodoro) {
       setCoinsEarned(20);
+      setShowVictory(true);
     } else {
       const startedAt = task?.startedAt || new Date().toISOString();
       gameState.updateTask(task.id, { timeSpent: elapsed, startedAt });
       const result = gameState.completeTask(task.id, { timeSpentMs: elapsed, startedAt });
       setCoinsEarned(result?.coinsEarned || COIN_REWARDS[task.priority] || 20);
+      setFinishPrompt(true);
     }
-    setFinishPrompt(true);
   };
 
   const handlePause = () => {
