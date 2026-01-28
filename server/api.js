@@ -389,15 +389,14 @@ export const registerApiMiddleware = (server, { mongoUri }) => {
         return;
       }
 
-      const user = await User.findOne({ userId: normalizedId });
-      if (!user) {
-        sendJson(res, 200, { tasks: [] });
-        return;
-      }
-
-      user.tasks = (user.tasks || []).filter((t) => t?.id !== taskId);
-      await user.save();
-      sendJson(res, 200, { tasks: user.tasks || [] });
+      // Use atomic $pull to avoid Mongoose VersionError when another request
+      // (e.g. set-username, tasks/upsert) has already updated the same User.
+      const user = await User.findOneAndUpdate(
+        { userId: normalizedId },
+        { $pull: { tasks: { id: taskId } } },
+        { new: true }
+      ).lean();
+      sendJson(res, 200, { tasks: user?.tasks || [] });
       return;
     }
 
