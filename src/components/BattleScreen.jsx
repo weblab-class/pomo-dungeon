@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { AVATARS, MONSTERS, COIN_REWARDS, DUNGEON_ROOMS } from '../data/constants';
 import { useLocalStorage } from '../hooks/useLocalStorage';
+import idleAnimationVideo from '../../audio/idle_animation.mp4';
 
 function BattleScreen({ task, gameState, onExit, onComplete }) {
   // Initialize elapsed from task's saved timeSpent (for resume functionality)
@@ -26,6 +27,7 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
   const [monsterWalkSprite, setMonsterWalkSprite] = useState(null);
   const [monsterShieldSprite, setMonsterShieldSprite] = useState(null);
   const [phase, setPhase] = useState('study');
+  const [showingBreakOverlay, setShowingBreakOverlay] = useState(false);
   const [musicEnabled, setMusicEnabled] = useLocalStorage('pomoDungeon_musicEnabled', true);
   const [musicVolume] = useLocalStorage('pomoDungeon_musicVolume', 0.35);
   const [showPlaylist, setShowPlaylist] = useState(false);
@@ -52,12 +54,15 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
   const finisherStartRef = useRef(0);
   const finisherHitRef = useRef(false);
   const finisherDoneRef = useRef(false);
+  const idleVideoRef = useRef(null);
 
   const isPomodoro = Boolean(task?.isPomodoro);
   const studyMinutes = task?.timeEstimate || 25;
   const breakMinutes = task?.breakMinutes || 5;
   const duration =
     (phase === 'break' ? breakMinutes : studyMinutes) * 60 * 1000;
+  const isBreakOverlayVisible =
+    paused || (isPomodoro && phase === 'break' && showingBreakOverlay);
   const avatar = AVATARS[gameState.player.currentAvatar] || AVATARS.knight_1;
   const monster = MONSTERS[task?.monsterType] || MONSTERS.goblin;
   const PLAYER_SIZE = isMobile ? 260 : 450;
@@ -209,10 +214,18 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
     }
   }, [musicEnabled, paused]);
 
+  // Play idle video when break overlay is shown (pause or Pomodoro break)
+  useEffect(() => {
+    if (isBreakOverlayVisible && idleVideoRef.current) {
+      idleVideoRef.current.play().catch(() => {});
+    }
+  }, [isBreakOverlayVisible]);
+
   useEffect(() => {
     const nextElapsed = task?.timeSpent || 0;
     setElapsed(nextElapsed);
     setPaused(false);
+    setShowingBreakOverlay(false);
     setQuestComplete(false);
     setShowVictory(false);
     setFinishPrompt(false);
@@ -275,6 +288,7 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
     startTimeRef.current = performance.now();
     pausedTimeRef.current = 0;
     setPaused(false);
+    setShowingBreakOverlay(phase === 'break');
   }, [phase, isPomodoro]);
 
   const loadImage = (src, setter) => {
@@ -408,7 +422,19 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
       monsterReturnDuration +
       200;
 
+    // #region agent log
+    try {
+      fetch('http://127.0.0.1:7242/ingest/e7b0bc9d-6948-4adc-afad-7004a329e4a6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'BattleScreen.jsx:effect',message:'monster frame counts',data:{monsterWalkFrames,monsterFrames,monsterIdleFrames,monsterId:monster?.id,monsterWalkDuration,monsterAttackDuration,monsterReturnDuration,monsterCycleDuration},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3'})}).catch(()=>{});
+    } catch(_){}
+    // #endregion
+
     const startCycle = (startTime) => {
+      // #region agent log
+      const oldStart = monsterAttackStartRef.current;
+      const oldElapsed = startTime - oldStart;
+      const wasReturning = oldElapsed >= monsterWalkDuration + monsterAttackDuration && oldElapsed < monsterWalkDuration + monsterAttackDuration + monsterReturnDuration;
+      const returnProgress = wasReturning ? 1 - (oldElapsed - monsterWalkDuration - monsterAttackDuration) / monsterReturnDuration : null;
+      // #endregion
       const attackPool = [
         ...playerAttackSprites,
         ...(playerRunAttackSprite ? [playerRunAttackSprite] : []),
@@ -431,6 +457,11 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
       playerAttackStartRef.current = startTime;
       const attackStartDelay = runDuration + totalDuration + playerReturnDuration + ATTACK_DELAY_MS;
       monsterAttackStartRef.current = startTime + attackStartDelay;
+      // #region agent log
+      try {
+        fetch('http://127.0.0.1:7242/ingest/e7b0bc9d-6948-4adc-afad-7004a329e4a6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'BattleScreen.jsx:startCycle',message:'cycle reset',data:{wasReturning,returnProgress,comboLength,totalDuration,attackStartDelay,monsterCycleDuration},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
+      } catch(_){}
+      // #endregion
     };
 
     startCycle(performance.now());
@@ -695,6 +726,14 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
     setPaused(!paused);
   };
 
+  const handleBreakOverlayResume = () => {
+    if (isPomodoro && phase === 'break') {
+      setPhase('study');
+      return;
+    }
+    if (paused) handlePause();
+  };
+
   const handleVictoryContinue = () => {
     if (task?.id && !task?.isPomodoro) {
       // Ensure the completed quest is removed from the quest board.
@@ -883,6 +922,42 @@ function BattleScreen({ task, gameState, onExit, onComplete }) {
             />
           </div>
         </div>
+
+        {/* Break / Pause overlay with idle animation (manual pause or Pomodoro break) */}
+        {isBreakOverlayVisible && (
+          <div className="break-overlay">
+            <video
+              ref={idleVideoRef}
+              className="break-overlay-video"
+              src={idleAnimationVideo}
+              autoPlay
+              loop
+              muted
+              playsInline
+              aria-hidden
+            />
+            <div className="break-overlay-content">
+              {isPomodoro && phase === 'break' && (
+                <div className="break-overlay-timer">
+                  <span className="break-overlay-label">
+                    {breakMinutes} min break
+                  </span>
+                  <span className="break-overlay-remaining">
+                    {formatTime(remaining)} left
+                  </span>
+                </div>
+              )}
+              <button
+                type="button"
+                className="btn btn-medieval btn-resume"
+                onClick={handleBreakOverlayResume}
+                aria-label={isPomodoro && phase === 'break' ? 'Start study' : (paused ? 'Resume battle' : 'Resume')}
+              >
+                {isPomodoro && phase === 'break' ? 'Start' : 'Resume'}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Victory Overlay */}
         {showVictory && (
