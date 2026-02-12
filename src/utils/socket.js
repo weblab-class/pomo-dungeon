@@ -28,8 +28,14 @@ export const initSocket = (userId) => {
     }
   });
 
-  socket.on('disconnect', () => {
-    console.log('Socket disconnected');
+  socket.on('disconnect', (reason) => {
+    console.log('Socket disconnected', reason);
+  });
+
+  // Real-time latency: server sends latency-ping with ts; we echo ts back for RTT
+  socket.on('latency-ping', (payload) => {
+    const ts = payload?.ts ?? (typeof payload === 'number' ? payload : null);
+    if (typeof ts === 'number') socket.emit('latency-pong', ts);
   });
 
   socket.on('user-status-change', (data) => {

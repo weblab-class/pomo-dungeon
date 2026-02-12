@@ -2,6 +2,25 @@ import crypto from 'node:crypto';
 import { connectMongo } from './db.js';
 import User from './models/User.js';
 import FriendRequest from './models/FriendRequest.js';
+import Event from './models/Event.js';
+
+// Request timing: last N requests for p95 latency + error rate
+const MAX_REQUEST_SAMPLES = 10000;
+const requestTimings = [];
+function recordRequestTiming(ms, statusCode, path) {
+  requestTimings.push({ ms, statusCode, path, at: Date.now() });
+  if (requestTimings.length > MAX_REQUEST_SAMPLES) requestTimings.shift();
+}
+function getRequestMetrics() {
+  if (requestTimings.length === 0) return { count: 0, p95LatencyMs: null, errorRate: null };
+  const recent = requestTimings.slice(-5000);
+  const sorted = [...recent].sort((a, b) => a.ms - b.ms);
+  const p95Index = Math.min(Math.floor(sorted.length * 0.95), sorted.length - 1);
+  const p95LatencyMs = sorted[p95Index]?.ms ?? sorted[sorted.length - 1]?.ms ?? null;
+  const errors = recent.filter((r) => r.statusCode >= 400).length;
+  const errorRate = recent.length ? errors / recent.length : null;
+  return { count: recent.length, p95LatencyMs, errorRate };
+}
 
 const normalizeUserId = (userId) => (userId || '').trim().toLowerCase();
 const normalizeUsername = (username) => (username || '').trim().toLowerCase();
@@ -64,10 +83,73 @@ export const registerApiMiddleware = (server, { mongoUri }) => {
     }
 
     const { url, method } = req;
+    const startTime = Date.now();
+    const originalEnd = res.end.bind(res);
+    res.end = function (...args) {
+      recordRequestTiming(Date.now() - startTime, res.statusCode, url);
+      return originalEnd(...args);
+    };
 
     if (url === '/api/health' && method === 'GET') {
       sendJson(res, 200, { ok: true });
       return;
+    }
+
+    // POST /api/events - Event logging (users, sessions, quests)
+    if (url === '/api/events' && method === 'POST') {
+      const body = await readJsonBody(req);
+      const { userId, eventType, payload } = body || {};
+      const normalizedId = normalizeUserId(userId);
+      if (!normalizedId || !eventType) {
+        sendJson(res, 400, { error: 'userId and eventType required' });
+        return;
+      }
+      Event.create({ userId: normalizedId, eventType, payload: payload || {} }).catch(() => {});
+      sendJson(res, 201, { ok: true });
+      return;
+    }
+
+    // GET /api/analytics - Aggregated counts from events (users, sessions, quests)
+    if (url === '/api/analytics' && method === 'GET') {
+      try {
+        const [uniqueUsers, sessionStarts, sessionEnds, questsCompleted] = await Promise.all([
+          Event.distinct('userId').then((ids) => ids.length),
+          Event.countDocuments({ eventType: 'session_start' }),
+          Event.countDocuments({ eventType: 'session_end' }),
+          Event.countDocuments({ eventType: 'quest_completed' }),
+        ]);
+        sendJson(res, 200, {
+          users: uniqueUsers,
+          sessions: { started: sessionStarts, ended: sessionEnds },
+          quests: { completed: questsCompleted },
+        });
+        return;
+      } catch (e) {
+        sendJson(res, 500, { error: e?.message || 'Analytics failed' });
+        return;
+      }
+    }
+
+    // GET /api/metrics - Request timing (p95, error rate) + socket metrics
+    if (url === '/api/metrics' && method === 'GET') {
+      try {
+        const requestMetrics = getRequestMetrics();
+        let socketMetrics = {};
+        try {
+          const { getSocketMetrics } = await import('./socket.js');
+          socketMetrics = getSocketMetrics();
+        } catch {
+          // Socket server may not be attached (e.g. serverless)
+        }
+        sendJson(res, 200, {
+          request: requestMetrics,
+          socket: socketMetrics,
+        });
+        return;
+      } catch (e) {
+        sendJson(res, 500, { error: e?.message || 'Metrics failed' });
+        return;
+      }
     }
 
     if (url === '/api/users/upsert' && method === 'POST') {
@@ -253,6 +335,7 @@ export const registerApiMiddleware = (server, { mongoUri }) => {
         },
         { upsert: true }
       );
+      Event.create({ userId: normalizedId, eventType: 'session_start', payload: { sessionId } }).catch(() => {});
       sendJson(res, 200, { sessionId });
       return;
     }
@@ -289,6 +372,7 @@ export const registerApiMiddleware = (server, { mongoUri }) => {
 
       user.totalSecondsOnSite += duration;
       await user.save();
+      Event.create({ userId: normalizedId, eventType: 'session_end', payload: { sessionId, durationSeconds: duration } }).catch(() => {});
       sendJson(res, 200, { ok: true });
       return;
     }
@@ -334,6 +418,7 @@ export const registerApiMiddleware = (server, { mongoUri }) => {
         },
         { upsert: true }
       );
+      Event.create({ userId: normalizedId, eventType: 'quest_completed', payload: { questId, durationSeconds: questDurationSeconds } }).catch(() => {});
 
       sendJson(res, 200, { ok: true });
       return;

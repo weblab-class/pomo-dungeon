@@ -31,3 +31,14 @@ export const getJson = async (path, options = {}) => {
   }
   return res.json();
 };
+
+/** Log an event for analytics (users, sessions, quests). Fire-and-forget. */
+export const logEvent = (userId, eventType, payload = {}) => {
+  if (!userId || !eventType) return;
+  const path = `${API_BASE_URL}/api/events`;
+  fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId, eventType, payload }),
+  }).catch(() => {});
+};

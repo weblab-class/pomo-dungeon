@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useLocalStorage } from './useLocalStorage';
-import { getJson, postJson } from '../utils/api';
+import { getJson, postJson, logEvent } from '../utils/api';
 import { PRIORITY, COIN_REWARDS, getRandomDungeonRoom, getMonsterForPriority } from '../data/constants';
 
 const STORAGE_KEYS = {
@@ -134,6 +134,7 @@ export function useGameState() {
     if (googleUser?.sub || googleUser?.email) {
       const userId = googleUser.sub || googleUser.email;
       void postJson('/api/tasks/upsert', { userId, task: newTask }).catch(() => {});
+      logEvent(userId, 'quest_created', { taskId: newTask.id });
     }
     return newTask;
   };
