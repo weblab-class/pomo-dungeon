@@ -67,3 +67,4 @@ Luiz Melo on itch.io for providing free rpg elements
 Adobe Creative Cloud for providing backdrops
 Medieval Lofi for providing lofi music
 SoundCloud for providing SoundCloud API
+SoundCloud for providing SoundCloud API
